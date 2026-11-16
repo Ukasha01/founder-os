@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { createPerson, deletePerson } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ error?: string; q?: string }> }) {
   const sp = await searchParams;
@@ -18,12 +20,13 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   for (const c of open ?? []) for (const id of [c.made_by_person_id, c.made_to_person_id]) if (id) openCount.set(id, (openCount.get(id) ?? 0) + 1);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">People</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">People</h1>
       {sp.error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{sp.error}</p>}
-      <form className="mt-3 flex gap-2"><input name="q" defaultValue={term} placeholder="Search name or organization" className={`${input} flex-1`} /><button className={btn}>Search</button></form>
+      <form className="mt-3 flex gap-2"><input name="q" defaultValue={term} placeholder="Search name or organization" className={`${input} flex-1`} /><SubmitButton variant="secondary">Search</SubmitButton></form>
 
-      <form action={createPerson} className={`${card} mt-4 grid gap-2 sm:grid-cols-2`}>
+      <NewPanel label="New person">
+      <form action={createPerson} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <label className="flex flex-col gap-1 text-xs">Name<input name="name" required maxLength={200} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Organization<input name="organization" className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Position<input name="position" className={input} /></label>
@@ -34,8 +37,9 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
           <select name="workspace_id" defaultValue="" className={input}><option value="">None</option>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
         </label>
         <label className="flex flex-col gap-1 text-xs">Notes<input name="notes" className={input} /></label>
-        <div><button className={btnPrimary}>Add person</button></div>
+        <div><SubmitButton variant="primary">Add person</SubmitButton></div>
       </form>
+      </NewPanel>
 
       {!people?.length && <p className="mt-6 text-neutral-500">No people yet.</p>}
       <ul className="mt-6 flex flex-col gap-3">
@@ -52,7 +56,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
               <form action={deletePerson} className="flex items-center gap-2">
                 <input type="hidden" name="id" value={p.id} />
                 <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm delete</label>
-                <button className={btn}>Delete</button>
+                <SubmitButton variant="secondary">Delete</SubmitButton>
               </form>
             </div>
           </li>

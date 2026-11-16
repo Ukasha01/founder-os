@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card, PRIORITY_LABEL } from "@/lib/ui";
+import { input, card, PRIORITY_LABEL } from "@/lib/ui";
 import { addDays, dateInTz } from "@/lib/time";
 import { createRule, deleteRule, setPaused, skipOccurrence } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -21,8 +23,8 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
     `${r.freq === "daily" ? (r.interval_count > 1 ? `Every ${r.interval_count} days` : "Daily") : r.freq === "weekly" ? `Every ${r.interval_count > 1 ? r.interval_count + " weeks" : "week"}${r.by_weekday?.length ? " on " + r.by_weekday.map((n: number) => DAYS[n]).join(", ") : ""}` : `Monthly${r.by_monthday?.length ? " on day " + r.by_monthday.join(", ") : ""}`}${r.times_of_day?.length ? " at " + r.times_of_day.map((t: string) => t.slice(0, 5)).join(", ") : ""}`;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Recurring tasks</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Recurring tasks</h1>
       <p className="text-sm text-neutral-500">Tasks are created for the next 14 days whenever you open the app. Changing or finishing one never changes the series.</p>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
@@ -33,18 +35,18 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
             <p className="font-medium">{r.name} {r.is_paused && <span className="text-xs font-normal text-amber-700">(paused)</span>}</p>
             <p className="text-sm text-neutral-600">{describe(r)} · from {r.start_date}{r.end_date ? ` to ${r.end_date}` : ""}</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              <form action={setPaused}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="paused" value={r.is_paused ? "false" : "true"} /><button className={btn}>{r.is_paused ? "Resume" : "Pause"}</button></form>
+              <form action={setPaused}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="paused" value={r.is_paused ? "false" : "true"} /><SubmitButton variant="secondary">{r.is_paused ? "Resume" : "Pause"}</SubmitButton></form>
               <form action={deleteRule} className="flex items-center gap-1">
                 <input type="hidden" name="id" value={r.id} />
                 <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm delete (keeps created tasks)</label>
-                <button className={btn}>Delete</button>
+                <SubmitButton variant="secondary">Delete</SubmitButton>
               </form>
             </div>
           </li>
         ))}
       </ul>
 
-      <h2 className="mt-6 mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Next 7 days</h2>
+      <h2 className="mt-6 mb-2 text-[15px] font-semibold">Next 7 days</h2>
       <ul className="text-sm">
         {upcoming?.map((t) => (
           <li key={t.id} className="flex items-center gap-2 py-0.5">
@@ -56,8 +58,8 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
         {!upcoming?.length && <li className="text-neutral-500">Nothing generated yet.</li>}
       </ul>
 
-      <form action={createRule} className={`${card} mt-6 grid gap-2 sm:grid-cols-2`}>
-        <h2 className="font-medium sm:col-span-2">New recurring task</h2>
+      <NewPanel label="New recurring task">
+      <form action={createRule} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Title<input name="title" required maxLength={300} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Workspace<select name="workspace_id" required className={input}>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
         <label className="flex flex-col gap-1 text-xs">Priority<select name="priority" defaultValue="normal" className={input}>{Object.entries(PRIORITY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
@@ -71,8 +73,9 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
         <label className="flex flex-col gap-1 text-xs">Estimate (min)<input type="number" name="estimated_minutes" min={0} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Starts<input type="date" name="start_date" defaultValue={today} required className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Ends (optional)<input type="date" name="end_date" className={input} /></label>
-        <div className="self-end"><button className={btnPrimary}>Add</button></div>
+        <div className="self-end"><SubmitButton variant="primary">Add</SubmitButton></div>
       </form>
+      </NewPanel>
     </div>
   );
 }

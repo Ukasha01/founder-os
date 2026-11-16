@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, addMonths, dateInTz, isDateString, rangeUtc, startOfMonth, startOfWeek, timeInTz, weekday, WEEKDAY_KEYS } from "@/lib/time";
-import { formatMinutes, input, btn, btnPrimary, card } from "@/lib/ui";
+import { formatMinutes, input, btn, card } from "@/lib/ui";
 import { createEvent, deleteEvent, saveCapacity } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 type View = "day" | "week" | "month" | "agenda";
 type Item = { key: string; date: string; time: string; title: string; kind: "event" | "deadline"; href?: string; eventId?: string; minutes: number; fixed: boolean; type: string };
@@ -86,8 +88,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   );
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
+    <div className="max-w-4xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Calendar</h1>
       {sp.error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{sp.error}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -134,10 +136,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         )}
       </div>
 
-      <form action={createEvent} className={`${card} mt-6 grid gap-2 sm:grid-cols-2`}>
+      <NewPanel label="Add event">
+      <form action={createEvent} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <input type="hidden" name="client_request_id" value={crypto.randomUUID()} />
         <input type="hidden" name="return_to" value={here} />
-        <h2 className="font-medium sm:col-span-2">Add to calendar</h2>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Title<input name="title" required maxLength={300} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Type
           <select name="event_type" defaultValue="time_block" className={input}>
@@ -153,8 +155,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         <label className="flex flex-col gap-1 text-xs">Start<input type="datetime-local" name="start" required defaultValue={`${date}T09:00`} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">End<input type="datetime-local" name="end" className={input} /></label>
         <label className="flex items-center gap-2 text-xs"><input type="checkbox" name="is_fixed" /> Fixed commitment (university, prayers, sleep)</label>
-        <div><button className={btnPrimary}>Add</button></div>
+        <div><SubmitButton variant="primary">Add</SubmitButton></div>
       </form>
+      </NewPanel>
 
       <form action={saveCapacity} className={`${card} mt-4`}>
         <input type="hidden" name="return_to" value={here} />

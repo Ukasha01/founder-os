@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, btnPrimary, card } from "@/lib/ui";
 import { addDays, dateInTz, isDateString } from "@/lib/time";
 import { loadDay } from "@/lib/dayscore";
 import { markPlanned, saveReview } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 const LABEL = { tasks: "Tasks", hours: "Planned hours", kpis: "KPIs", habits: "Habits", planning: "Planning and review" } as const;
 
@@ -17,8 +18,8 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const frozen = day.review?.review_completed_at ? await supabase.from("daily_reviews").select("score_total, weights_snapshot").eq("review_date", date).maybeSingle() : null;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Daily review</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Daily review</h1>
       <p className="mt-1 flex flex-wrap items-center gap-3 text-sm">
         <Link href={`/review?date=${addDays(date, -1)}`} className="underline">← Previous</Link><strong>{date}{date === today ? " (today)" : ""}</strong>
         {date < today && <Link href={`/review?date=${addDays(date, 1)}`} className="underline">Next →</Link>}
@@ -49,7 +50,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       <section className={`${card} mt-4`}>
         <h2 className="font-medium">Plan</h2>
         <p className="text-sm text-neutral-600">{day.review?.plan_completed_at ? "Day marked as planned." : "Not marked as planned yet."}</p>
-        {!day.review?.plan_completed_at && <form action={markPlanned} className="mt-2"><input type="hidden" name="date" value={date} /><button className={btn}>Mark day as planned</button></form>}
+        {!day.review?.plan_completed_at && <form action={markPlanned} className="mt-2"><input type="hidden" name="date" value={date} /><SubmitButton variant="secondary">Mark day as planned</SubmitButton></form>}
       </section>
 
       <form action={saveReview} className={`${card} mt-4 flex flex-col gap-2`}>
@@ -59,7 +60,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
         <label className="flex flex-col gap-1 text-xs">Blockers<textarea name="blockers" rows={3} defaultValue={day.review?.blockers ?? ""} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Tomorrow&apos;s plan<textarea name="tomorrow_plan" rows={3} defaultValue={day.review?.tomorrow_plan ?? ""} className={input} /></label>
         <div className="flex gap-2">
-          <button className={btn}>Save draft</button>
+          <SubmitButton variant="secondary">Save draft</SubmitButton>
           <button name="complete" value="yes" className={btnPrimary}>{day.review?.review_completed_at ? "Update completed review" : "Complete review and save score"}</button>
         </div>
       </form>

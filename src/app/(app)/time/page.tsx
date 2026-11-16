@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { addDays, dateInTz, startOfWeek } from "@/lib/time";
-import { formatMinutes, input, btn, btnPrimary, card } from "@/lib/ui";
+import { formatMinutes, input, card } from "@/lib/ui";
 import { logManual, startTimer, stopTimer } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function TimePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -27,8 +28,8 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
   for (const r of week ?? []) byWs.set(r.workspace_id, (byWs.get(r.workspace_id) ?? 0) + (r.duration_minutes ?? 0));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Time</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Time</h1>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       <section className={`${card} mt-5`}>
@@ -40,7 +41,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
               Running since {new Intl.DateTimeFormat("en-GB", { timeZone: tz, timeStyle: "short" }).format(new Date(running.started_at))}
               {" · "}{running.task_id ? taskTitle.get(running.task_id) ?? "a task" : wsName.get(running.workspace_id)}
             </p>
-            <button className={btnPrimary}>Stop</button>
+            <SubmitButton variant="primary">Stop</SubmitButton>
           </form>
         ) : (
           <form action={startTimer} className="mt-2 flex flex-wrap items-end gap-2">
@@ -56,7 +57,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
                 {workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             </label>
-            <button className={btnPrimary}>Start</button>
+            <SubmitButton variant="primary">Start</SubmitButton>
           </form>
         )}
       </section>
@@ -73,7 +74,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
           </label>
           <label className="flex flex-col gap-1 text-xs">Minutes<input type="number" name="minutes" min={1} max={1440} required className={`${input} w-28`} /></label>
           <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs">Note<input name="note" maxLength={500} className={input} /></label>
-          <button className={btn}>Log</button>
+          <SubmitButton variant="secondary">Log</SubmitButton>
         </form>
       </section>
 

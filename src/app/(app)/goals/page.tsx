@@ -1,6 +1,8 @@
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { addMilestone, createGoal, deleteGoal, setGoalStatus, updateMilestone } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 const GOAL_STATUS: Record<string, string> = { not_started: "Not started", active: "Active", achieved: "Achieved", paused: "Paused", abandoned: "Abandoned" };
 const MS_STATUS: Record<string, string> = { pending: "Pending", in_progress: "In progress", achieved: "Achieved", missed: "Missed", cancelled: "Cancelled" };
@@ -18,12 +20,13 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
   const wsName = new Map((workspaces ?? []).map((w) => [w.id as string, w.name as string]));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Goals</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Goals</h1>
       <p className="text-sm text-neutral-500">Milestones must be measurable: a target number, or a written way to check it is done.</p>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
-      <form action={createGoal} className={`${card} mt-5 grid gap-2 sm:grid-cols-2`}>
+      <NewPanel label="New goal">
+      <form action={createGoal} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Goal
           <input name="name" required maxLength={300} className={input} placeholder="e.g. Run 3 paid pilots" />
         </label>
@@ -38,8 +41,9 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
         </label>
         <label className="flex flex-col gap-1 text-xs">Start date<input type="date" name="start_date" className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Target date<input type="date" name="target_date" className={input} /></label>
-        <div className="sm:col-span-2"><button className={btnPrimary}>Add goal</button></div>
+        <div className="sm:col-span-2"><SubmitButton variant="primary">Add goal</SubmitButton></div>
       </form>
+      </NewPanel>
 
       {!goals?.length && <p className="mt-8 text-neutral-500">No goals yet.</p>}
       <ul className="mt-6 flex flex-col gap-4">
@@ -78,7 +82,7 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                           {Object.entries(MS_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       </label>
-                      <button className={btn}>Update</button>
+                      <SubmitButton variant="secondary">Update</SubmitButton>
                     </form>
                   </li>
                 ))}
@@ -91,7 +95,7 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                 <label className="flex flex-col gap-1 text-xs">Unit<input name="unit" maxLength={40} className={`${input} w-24`} /></label>
                 <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs">…or how it is measured<input name="measure_description" maxLength={2000} className={input} /></label>
                 <label className="flex flex-col gap-1 text-xs">Due<input type="date" name="due_date" className={input} /></label>
-                <button className={btn}>Add</button>
+                <SubmitButton variant="secondary">Add</SubmitButton>
               </form>
 
               <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -100,12 +104,12 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                   <select name="status" defaultValue={g.status} aria-label="Goal status" className={input}>
                     {Object.entries(GOAL_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
-                  <button className={btn}>Set</button>
+                  <SubmitButton variant="secondary">Set</SubmitButton>
                 </form>
                 <form action={deleteGoal} className="flex items-center gap-2">
                   <input type="hidden" name="id" value={g.id} />
                   <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm delete</label>
-                  <button className={btn}>Delete</button>
+                  <SubmitButton variant="secondary">Delete</SubmitButton>
                 </form>
               </div>
             </li>

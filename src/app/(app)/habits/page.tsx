@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
 import { input, btn, btnPrimary, card } from "@/lib/ui";
 import { addDays, dateInTz, isDateString } from "@/lib/time";
 import { PRESETS, consistency, currentStreak, isScheduled, type EntryStatus, type Frequency } from "@/lib/habits";
 import { archiveHabit, createHabit, logHabit } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -28,8 +30,8 @@ export default async function HabitsPage({ searchParams }: { searchParams: Promi
   const def = (h: NonNullable<typeof habits>[number]) => ({ frequency_type: h.frequency_type as Frequency, weekdays: h.weekdays, weekly_target: h.weekly_target, start_date: h.start_date });
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Habits</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Habits</h1>
       {sp.error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{sp.error}</p>}
       <p className="mt-2 flex items-center gap-3 text-sm">
         <Link href={`/habits?date=${addDays(date, -1)}`} className="underline">← Previous day</Link>
@@ -72,8 +74,8 @@ export default async function HabitsPage({ searchParams }: { searchParams: Promi
       </ul>
       <p className="mt-2 text-xs text-neutral-500">Skipped days are excused: they do not break a streak or count against you. Past days can be edited any time.</p>
 
-      <form action={createHabit} className={`${card} mt-6 grid gap-2 sm:grid-cols-2`}>
-        <h2 className="font-medium sm:col-span-2">New habit</h2>
+      <NewPanel label="New habit">
+      <form action={createHabit} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <input type="hidden" name="start_date" value={today} />
         <label className="flex flex-col gap-1 text-xs">Name<input name="name" required maxLength={200} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Preset (optional)
@@ -87,8 +89,9 @@ export default async function HabitsPage({ searchParams }: { searchParams: Promi
           <div className="mt-1 flex flex-wrap gap-3 text-sm">{DAYS.map((n, i) => <label key={n} className="flex items-center gap-1"><input type="checkbox" name="weekdays" value={i} />{n}</label>)}</div>
         </fieldset>
         <label className="flex flex-col gap-1 text-xs">Unit (optional: pages, minutes)<input name="unit" className={input} /></label>
-        <div className="self-end"><button className={btnPrimary}>Add habit</button></div>
+        <div className="self-end"><SubmitButton variant="primary">Add habit</SubmitButton></div>
       </form>
+      </NewPanel>
     </div>
   );
 }

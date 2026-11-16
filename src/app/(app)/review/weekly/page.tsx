@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card, formatMinutes } from "@/lib/ui";
+import { input, btnPrimary, card, formatMinutes } from "@/lib/ui";
 import { addDays, dateInTz, isDateString, rangeUtc, startOfWeek } from "@/lib/time";
 import { saveWeekly } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function WeeklyReviewPage({ searchParams }: { searchParams: Promise<{ error?: string; week?: string }> }) {
   const sp = await searchParams;
@@ -31,8 +32,8 @@ export default async function WeeklyReviewPage({ searchParams }: { searchParams:
   const summary = { tasks_completed: done?.length ?? 0, reschedules: moved?.length ?? 0, minutes_logged: minutes, avg_score: avg, reviewed_days: scores.length, habits_done: habitDone };
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Weekly review</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Weekly review</h1>
       <p className="mt-1 flex flex-wrap items-center gap-3 text-sm">
         <Link href={`/review/weekly?week=${addDays(start, -7)}`} className="underline">← Previous</Link><strong>{start} to {end}</strong>
         {start < thisWeek && <Link href={`/review/weekly?week=${addDays(start, 7)}`} className="underline">Next →</Link>}
@@ -52,7 +53,7 @@ export default async function WeeklyReviewPage({ searchParams }: { searchParams:
         <label className="flex flex-col gap-1 text-xs">Wins<textarea name="wins" rows={3} defaultValue={saved?.wins ?? ""} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Challenges<textarea name="challenges" rows={3} defaultValue={saved?.challenges ?? ""} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Next week&apos;s focus<textarea name="next_week_focus" rows={3} defaultValue={saved?.next_week_focus ?? ""} className={input} /></label>
-        <div className="flex gap-2"><button className={btn}>Save draft</button><button name="complete" value="yes" className={btnPrimary}>{saved?.completed_at ? "Update completed review" : "Complete week"}</button></div>
+        <div className="flex gap-2"><SubmitButton variant="secondary">Save draft</SubmitButton><button name="complete" value="yes" className={btnPrimary}>{saved?.completed_at ? "Update completed review" : "Complete week"}</button></div>
       </form>
     </div>
   );

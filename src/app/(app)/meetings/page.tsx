@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { dateInTz, timeInTz } from "@/lib/time";
 import { createMeeting } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -27,10 +29,11 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
     </li>
   );
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Meetings</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Meetings</h1>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      <form action={createMeeting} className={`${card} mt-4 grid gap-2 sm:grid-cols-2`}>
+      <NewPanel label="New meeting">
+      <form action={createMeeting} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Title<input name="title" required maxLength={300} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Starts<input type="datetime-local" name="starts" className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Ends<input type="datetime-local" name="ends" className={input} /></label>
@@ -39,11 +42,12 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
           <select name="workspace_id" defaultValue="" className={input}><option value="">None</option>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
         </label>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Agenda<textarea name="agenda" rows={2} className={input} /></label>
-        <div><button className={btnPrimary}>Add meeting</button></div>
+        <div><SubmitButton variant="primary">Add meeting</SubmitButton></div>
       </form>
-      <h2 className="mt-6 mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Upcoming</h2>
+      </NewPanel>
+      <h2 className="mt-6 mb-2 text-[15px] font-semibold">Upcoming</h2>
       <ul className="flex flex-col gap-2">{upcoming.map(row)}{!upcoming.length && <li className="text-sm text-neutral-500">No upcoming meetings.</li>}</ul>
-      <h2 className="mt-6 mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Past and cancelled</h2>
+      <h2 className="mt-6 mb-2 text-[15px] font-semibold">Past and cancelled</h2>
       <ul className="flex flex-col gap-2">{past.map(row)}{!past.length && <li className="text-sm text-neutral-500">None yet.</li>}</ul>
     </div>
   );

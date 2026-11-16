@@ -143,3 +143,13 @@ export async function deleteTask(formData: FormData) {
   if (error) go(back, error.message);
   go("/tasks");
 }
+
+// One-tap complete / reopen from lists. No redirect: the page simply refreshes in place.
+export async function toggleTaskDone(formData: FormData) {
+  const id = uuid.safeParse(formData.get("id"));
+  if (!id.success) return;
+  const next = formData.get("done") === "true" ? "not_started" : "completed";
+  const supabase = await createClient();
+  await supabase.from("tasks").update({ status: next }).eq("id", id.data);
+  revalidatePath("/", "layout");
+}

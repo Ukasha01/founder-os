@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { dateInTz, timeInTz } from "@/lib/time";
 import { addAttendee, createMeetingFollowUp, deleteMeeting, removeAttendee, updateMeeting } from "../actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function MeetingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   const { id } = await params;
@@ -25,9 +26,9 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
   const present = new Set((attendees ?? []).map((a) => a.person_id));
   const defaultWs = m.workspace_id ?? workspaces?.[0]?.id ?? "";
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       <p className="text-sm text-neutral-500"><Link href="/meetings" className="underline">Meetings</Link></p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">{m.title}</h1>
+      <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em]">{m.title}</h1>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       <form action={updateMeeting} className={`${card} mt-4 grid gap-2 sm:grid-cols-2`}>
@@ -42,7 +43,7 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Agenda<textarea name="agenda" rows={3} defaultValue={m.agenda ?? ""} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Notes<textarea name="notes" rows={5} defaultValue={m.notes ?? ""} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Decisions<textarea name="decisions" rows={3} defaultValue={m.decisions ?? ""} className={input} /></label>
-        <div><button className={btnPrimary}>Save</button></div>
+        <div><SubmitButton variant="primary">Save</SubmitButton></div>
       </form>
 
       <section className={`${card} mt-4`}>
@@ -62,7 +63,7 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
             <option value="" disabled>Add attendee…</option>
             {people?.filter((p) => !present.has(p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <button className={btn}>Add</button>
+          <SubmitButton variant="secondary">Add</SubmitButton>
         </form>
         {!people?.length && <p className="mt-1 text-xs text-neutral-500">Add people on the <Link href="/people" className="underline">People</Link> page first.</p>}
       </section>
@@ -83,14 +84,14 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
           <input type="hidden" name="client_request_id" value={crypto.randomUUID()} />
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">Task<input name="title" required defaultValue={`Follow up: ${m.title}`} className={input} /></label>
           <label className="flex flex-col gap-1 text-xs">Deadline<input type="date" name="deadline" className={input} /></label>
-          <button className={btn}>Create task</button>
+          <SubmitButton variant="secondary">Create task</SubmitButton>
         </form>
       </section>
 
       <form action={deleteMeeting} className={`${card} mt-4 flex items-center gap-2`}>
         <input type="hidden" name="id" value={id} />
         <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm delete</label>
-        <button className={btn}>Delete meeting</button>
+        <SubmitButton variant="secondary">Delete meeting</SubmitButton>
       </form>
     </div>
   );

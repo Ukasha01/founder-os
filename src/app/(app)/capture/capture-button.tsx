@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { captureItem, type CaptureResult } from "./actions";
 import { CAPTURE_TYPES, input, btnPrimary, btn } from "@/lib/ui";
+import { Icon } from "@/components/icons";
 
 type Ws = { id: string; name: string };
 
@@ -27,13 +28,13 @@ export function CaptureButton({ workspaces }: { workspaces: Ws[] }) {
       <button
         onClick={open}
         aria-label="Quick Capture"
-        className="fixed right-4 bottom-20 z-20 rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white shadow-lg md:bottom-6 md:right-6"
+        className="fixed right-4 bottom-20 z-20 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-pop transition hover:bg-[#2c3659] active:scale-95 md:right-8 md:bottom-8"
       >
-        + Capture
+        <Icon name="plus" className="h-4 w-4" />Capture
       </button>
-      <dialog ref={dialog} className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg p-4 backdrop:bg-black/40">
+      <dialog ref={dialog} className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-surface p-5 text-ink shadow-pop backdrop:bg-ink/40 backdrop:backdrop-blur-[2px]">
         <form action={action} className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Quick Capture</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Quick capture</h2>
           <input type="hidden" name="client_request_id" value={requestId} />
           <label className="flex flex-col gap-1 text-sm">Type
             <select name="capture_type" defaultValue="task" className={input}>

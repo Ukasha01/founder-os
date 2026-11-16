@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { CAPTURE_TYPES, PRIORITY_LABEL, input, btn, btnPrimary, card } from "@/lib/ui";
 import { archiveCapture, convertToTask, deleteCapture, saveTriage } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -15,8 +16,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const typeLabel = Object.fromEntries(CAPTURE_TYPES.map((t) => [t.value, t.label]));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Inbox</h1>
       <p className="text-sm text-neutral-500">Captured items waiting to be sorted. Use the + Capture button anywhere to add more.</p>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
@@ -24,7 +25,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <ul className="mt-6 flex flex-col gap-4">
         {items?.map((c) => (
           <li key={c.id} className={card}>
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{typeLabel[c.capture_type] ?? c.capture_type}</p>
+            <p className="text-xs font-semibold text-neutral-500">{typeLabel[c.capture_type] ?? c.capture_type}</p>
             <p className="mt-1 whitespace-pre-wrap">{c.raw_text}</p>
 
             <form className="mt-3 flex flex-wrap items-end gap-2">
@@ -51,12 +52,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
               <form action={archiveCapture}>
                 <input type="hidden" name="id" value={c.id} />
-                <button className={btn}>Archive</button>
+                <SubmitButton variant="secondary">Archive</SubmitButton>
               </form>
               <form action={deleteCapture} className="flex items-center gap-2">
                 <input type="hidden" name="id" value={c.id} />
                 <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm delete</label>
-                <button className={btn}>Delete</button>
+                <SubmitButton variant="secondary">Delete</SubmitButton>
               </form>
             </div>
           </li>

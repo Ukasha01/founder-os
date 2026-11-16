@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { dateInTz } from "@/lib/time";
 import { createCommitment, createCommitmentTask, deleteCommitment, rescheduleCommitment, setCommitmentStatus } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,12 +30,13 @@ export default async function CommitmentsPage({ searchParams }: { searchParams: 
   const filterName = person ? name.get(person) : null;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Commitments</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Commitments</h1>
       <p className="text-sm text-neutral-500">Promises you made and promises made to you.</p>
       {sp.error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{sp.error}</p>}
 
-      <form action={createCommitment} className={`${card} mt-4 grid gap-2 sm:grid-cols-2`}>
+      <NewPanel label="New commitment">
+      <form action={createCommitment} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <input type="hidden" name="client_request_id" value={crypto.randomUUID()} />
         {meeting && <input type="hidden" name="meeting_id" value={meeting} />}
         <label className="flex flex-col gap-1 text-xs sm:col-span-2">Commitment<input name="description" required maxLength={1000} className={input} /></label>
@@ -50,8 +53,9 @@ export default async function CommitmentsPage({ searchParams }: { searchParams: 
         <label className="flex flex-col gap-1 text-xs">Workspace
           <select name="workspace_id" defaultValue="" className={input}><option value="">None</option>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
         </label>
-        <div className="self-end"><button className={btnPrimary}>Add commitment</button></div>
+        <div className="self-end"><SubmitButton variant="primary">Add commitment</SubmitButton></div>
       </form>
+      </NewPanel>
 
       <p className="mt-4 text-sm">
         {filterName && <>Showing {filterName} · <Link href="/commitments" className="underline">clear</Link> · </>}
@@ -80,25 +84,25 @@ export default async function CommitmentsPage({ searchParams }: { searchParams: 
                   <select name="status" defaultValue={c.status} aria-label="Status" className={input}>
                     <option value="pending">Pending</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
                   </select>
-                  <button className={btn}>Set</button>
+                  <SubmitButton variant="secondary">Set</SubmitButton>
                 </form>
                 <form action={rescheduleCommitment} className="flex gap-1">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="date" name="due_date" defaultValue={c.due_date ?? ""} aria-label="Due" className={input} />
                   <input type="date" name="follow_up_date" defaultValue={c.follow_up_date ?? ""} aria-label="Follow up" className={input} />
-                  <button className={btn}>Save dates</button>
+                  <SubmitButton variant="secondary">Save dates</SubmitButton>
                 </form>
                 {c.follow_up_task_id ? <Link href={`/tasks/${c.follow_up_task_id}`} className="underline">Open follow-up task</Link> : (
                   <form action={createCommitmentTask} className="flex gap-1">
                     <input type="hidden" name="id" value={c.id} />
                     <select name="workspace_id" aria-label="Workspace for task" className={input}>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
-                    <button className={btn}>Create task</button>
+                    <SubmitButton variant="secondary">Create task</SubmitButton>
                   </form>
                 )}
                 <form action={deleteCommitment} className="flex items-center gap-1">
                   <input type="hidden" name="id" value={c.id} />
                   <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" value="yes" /> Confirm</label>
-                  <button className={btn}>Delete</button>
+                  <SubmitButton variant="secondary">Delete</SubmitButton>
                 </form>
               </div>
             </li>

@@ -1,7 +1,9 @@
+import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
-import { input, btn, btnPrimary, card } from "@/lib/ui";
+import { input, card } from "@/lib/ui";
 import { addDays, dateInTz, startOfMonth, startOfWeek, addMonths } from "@/lib/time";
 import { archiveKpi, createKpi, recordKpi } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 
 function periodRange(period: string, today: string): [string, string] {
   if (period === "day") return [today, today];
@@ -27,8 +29,8 @@ export default async function KpisPage({ searchParams }: { searchParams: Promise
   const wsName = new Map((workspaces ?? []).map((w) => [w.id, w.name]));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">KPIs</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">KPIs</h1>
       <p className="text-sm text-neutral-500">A KPI with no entry for the current period shows “no data”, never zero.</p>
       {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
@@ -57,7 +59,7 @@ export default async function KpisPage({ searchParams }: { searchParams: Promise
                 <label className="flex flex-col gap-1 text-xs">To<input type="date" name="period_end" defaultValue={to} required className={input} /></label>
                 <label className="flex flex-col gap-1 text-xs">Value<input type="number" step="any" name="actual_value" required className={`${input} w-28`} /></label>
                 <label className="flex min-w-32 flex-1 flex-col gap-1 text-xs">Note<input name="note" maxLength={500} className={input} /></label>
-                <button className={btn}>Record</button>
+                <SubmitButton variant="secondary">Record</SubmitButton>
               </form>
               {mine.length > 0 && (
                 <ul className="mt-2 text-xs text-neutral-600">
@@ -70,8 +72,8 @@ export default async function KpisPage({ searchParams }: { searchParams: Promise
         })}
       </ul>
 
-      <form action={createKpi} className={`${card} mt-6 grid gap-2 sm:grid-cols-2`}>
-        <h2 className="font-medium sm:col-span-2">New KPI</h2>
+      <NewPanel label="New KPI">
+      <form action={createKpi} className={`${card} grid gap-2 sm:grid-cols-2`}>
         <label className="flex flex-col gap-1 text-xs">Workspace<select name="workspace_id" required className={input}>{workspaces?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
         <label className="flex flex-col gap-1 text-xs">Name (e.g. Orders, Revenue)<input name="name" required maxLength={200} className={input} /></label>
         <label className="flex flex-col gap-1 text-xs">Unit<input name="unit" className={input} /></label>
@@ -80,8 +82,9 @@ export default async function KpisPage({ searchParams }: { searchParams: Promise
         <label className="flex flex-col gap-1 text-xs">Period<select name="period" defaultValue="week" className={input}><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
         <label className="flex flex-col gap-1 text-xs">Combine entries by<select name="aggregation" className={input}><option value="sum">Sum</option><option value="latest">Latest</option><option value="average">Average</option></select></label>
         <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="show_on_dashboard" /> Show on dashboard</label>
-        <div><button className={btnPrimary}>Add KPI</button></div>
+        <div><SubmitButton variant="primary">Add KPI</SubmitButton></div>
       </form>
+      </NewPanel>
     </div>
   );
 }

@@ -1,26 +1,62 @@
 @import "tailwindcss";
 
+/* Light theme only. Colour carries meaning: each workspace owns one hue (ws-*), the chrome stays deep navy. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Nastaliq Urdu", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+@theme {
+  --font-sans: ui-rounded, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", "Noto Nastaliq Urdu", sans-serif;
+
+  --color-canvas: #eff2f9;
+  --color-surface: #ffffff;
+  --color-ink: #1a2138;
+  --color-line: #e3e7f1;
+  --color-line-strong: #cfd5e6;
+  --color-tint: #e9edf8;
+  --color-muted: #6b7590;
+
+  /* Existing screens use neutral-*; retune the scale to a cool blue-grey so everything shares the palette. */
+  --color-neutral-50: #f6f8fc;
+  --color-neutral-100: #eef1f8;
+  --color-neutral-200: #e3e7f1;
+  --color-neutral-300: #cfd5e6;
+  --color-neutral-400: #98a2bb;
+  --color-neutral-500: #6b7590;
+  --color-neutral-600: #4b5572;
+  --color-neutral-700: #363f5c;
+  --color-neutral-800: #252d47;
+  --color-neutral-900: #1a2138;
+  --color-neutral-950: #10152a;
+
+  /* Workspace hues: solid (dots, edges), tint (backgrounds), ink (text on tint). */
+  --color-ws-blue: #3d6df2;    --color-ws-blue-tint: #e6edff;    --color-ws-blue-ink: #2449c8;
+  --color-ws-orange: #f28a30;  --color-ws-orange-tint: #ffefe0;  --color-ws-orange-ink: #a8520a;
+  --color-ws-pink: #e8528f;    --color-ws-pink-tint: #ffe6f0;    --color-ws-pink-ink: #a8265f;
+  --color-ws-violet: #7a5af2;  --color-ws-violet-tint: #eee8ff;  --color-ws-violet-ink: #5236c4;
+  --color-ws-green: #2daa6b;   --color-ws-green-tint: #def5e9;   --color-ws-green-ink: #146c43;
+  --color-ws-teal: #14a7a0;    --color-ws-teal-tint: #dcf4f2;    --color-ws-teal-ink: #0a716b;
+  --color-ws-slate: #8a93ab;   --color-ws-slate-tint: #eef1f8;   --color-ws-slate-ink: #4b5572;
+
+  --shadow-pop: 0 10px 30px -8px rgb(26 33 56 / 0.28), 0 2px 6px rgb(26 33 56 / 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html { background: var(--color-canvas); }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+
+/* Motion answers an action: a panel that opens, a button that is pressed. Nothing animates on its own. */
+@media (prefers-reduced-motion: no-preference) {
+  details[open] > .panel { animation: panel-in 160ms ease-out; }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  dialog[open] { animation: panel-in 160ms ease-out; }
 }

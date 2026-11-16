@@ -21,11 +21,11 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
   if (!ws) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight">{ws.name}</h1>
+    <div className="max-w-3xl">
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">{ws.name}</h1>
       {ws.description && <p className="text-neutral-500">{ws.description}</p>}
       {ws.archived_at && <p className="mt-2 text-sm text-amber-800">This workspace is archived.</p>}
-      <h2 className="mt-8 mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">Sections</h2>
+      <h2 className="mt-8 mb-3 text-[15px] font-semibold">Sections</h2>
       <ul className="grid gap-2 sm:grid-cols-2">
         {SECTIONS.map((s) => (
           <li key={s.name} className="rounded-lg border border-dashed border-neutral-300 p-3 text-sm text-neutral-500">

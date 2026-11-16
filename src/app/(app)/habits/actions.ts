@@ -65,3 +65,14 @@ export async function archiveHabit(formData: FormData) {
   const { error } = await supabase.from("habits").update({ archived_at: new Date().toISOString() }).eq("id", id.data!);
   go(null, error?.message);
 }
+
+// One-tap toggle from Today: done <-> cleared. No redirect; the page refreshes in place.
+export async function toggleHabitToday(formData: FormData) {
+  const p = z.object({ habit_id: uuid, entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), done: z.enum(["true", "false"]) }).safeParse(Object.fromEntries(formData));
+  if (!p.success) return;
+  const d = p.data;
+  const supabase = await createClient();
+  if (d.done === "true") await supabase.from("habit_entries").delete().eq("habit_id", d.habit_id).eq("entry_date", d.entry_date);
+  else await supabase.from("habit_entries").upsert({ habit_id: d.habit_id, entry_date: d.entry_date, status: "done" }, { onConflict: "habit_id,entry_date" });
+  revalidatePath("/", "layout");
+}
