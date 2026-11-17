@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { askAssistant } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import { input } from "@/lib/ui";
+import { MESSAGES, classifyRecognitionError, diagnose, micPermissionState, type VoiceIssue } from "@/lib/voice";
 
 // Minimal typing for the browser speech APIs (not in TypeScript's DOM lib everywhere).
 type Rec = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error: string }) => void) | null };
@@ -42,19 +43,37 @@ export function Composer({ enabled, lastReply }: { enabled: boolean; lastReply: 
     u.lang = lang; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
   }, [speak, lastReply, lang]);
 
-  const start = () => {
+  const say = (issue: VoiceIssue | null) => setMsg(issue && issue !== "ignore" ? MESSAGES[issue] : "");
+  const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  const start = async () => {
+    if (listening) return;
     const w = window as unknown as { SpeechRecognition?: RecCtor; webkitSpeechRecognition?: RecCtor };
     const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!Ctor) return;
+    if (!Ctor) return say("unsupported");
+    if (!window.isSecureContext) return say("insecure_context");
     setMsg("");
+    // Ask for the microphone first so the browser shows its permission prompt, but only where that is safe:
+    // when permission is still undecided, and never on iOS (opening the mic first can stop Safari's recogniser).
+    const state = await micPermissionState();
+    if (state === "denied") return say(await diagnose() ?? "permission_denied");
+    if (state === "prompt" && !isIOS()) { const issue = await diagnose(); if (issue) return say(issue); }
+
     const r = new Ctor();
     r.lang = lang; r.interimResults = true; r.continuous = false;
-    let finalText = "";
+    let finalText = "", failed = false;
     r.onresult = (e) => { finalText = Array.from(e.results).map((x) => x[0].transcript).join(" ").trim(); setText(finalText); setVoice(true); };
-    r.onerror = (e) => { setMsg(e.error === "not-allowed" ? "Microphone access is blocked. Allow it in your browser settings." : e.error === "no-speech" ? "I did not hear anything. Try again." : `Voice input stopped (${e.error}).`); };
-    r.onend = () => { setListening(false); if (autoSend && finalText) setTimeout(() => form.current?.requestSubmit(), 50); };
-    rec.current = r; setListening(true); r.start();
+    r.onerror = async (e) => {
+      failed = true;
+      // "not-allowed" is reported for several different causes. Check the real microphone before blaming permission.
+      const probe = ["not-allowed", "service-not-allowed", "audio-capture"].includes(e.error) ? await diagnose() : null;
+      say(classifyRecognitionError(e.error, probe));
+    };
+    r.onend = () => { setListening(false); if (!failed && autoSend && finalText) setTimeout(() => form.current?.requestSubmit(), 50); };
+    rec.current = r;
+    try { r.start(); setListening(true); } catch { say("unknown"); }
   };
+  const testMic = async () => { setMsg("Testing the microphone…"); const issue = await diagnose(); setMsg(issue ? MESSAGES[issue] : "The microphone works. If voice still fails, the browser's speech service is the problem, not permission."); };
   const stop = () => rec.current?.stop();
 
   return (
@@ -63,7 +82,7 @@ export function Composer({ enabled, lastReply }: { enabled: boolean; lastReply: 
       <form ref={form} action={askAssistant} className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-2 shadow-pop">
         <input type="hidden" name="voice" value={voice ? "1" : "0"} />
         {supported && (
-          <button type="button" onClick={listening ? stop : start} disabled={!enabled} aria-pressed={listening} aria-label={listening ? "Stop listening" : "Speak"}
+          <button type="button" onClick={listening ? stop : () => void start()} disabled={!enabled} aria-pressed={listening} aria-label={listening ? "Stop listening" : "Speak"}
             className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition active:scale-90 ${listening ? "animate-pulse bg-rose-500 text-white" : "bg-tint text-ink hover:bg-line"}`}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
           </button>
@@ -79,7 +98,8 @@ export function Composer({ enabled, lastReply }: { enabled: boolean; lastReply: 
             <select value={lang} onChange={(e) => { setLang(e.target.value); store.set("fos-lang", e.target.value); }} className="rounded-md border border-line px-2 py-1">{LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={autoSend} onChange={(e) => { setAutoSend(e.target.checked); store.set("fos-autosend", e.target.checked ? "1" : "0"); }} />Send when I stop talking</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={speak} onChange={(e) => { setSpeak(e.target.checked); store.set("fos-speak", e.target.checked ? "1" : "0"); }} />Read replies aloud</label>
-          {!supported && <p className="w-full">This browser has no speech recognition. Chrome on Android and desktop works best; iPhone Safari support is limited. Typing always works, and your phone keyboard&apos;s own microphone also works.</p>}
+          <button type="button" onClick={() => void testMic()} className="rounded-md border border-line px-2 py-1 hover:bg-tint">Test microphone</button>
+          {!supported && <p className="w-full">{MESSAGES.unsupported}</p>}
         </div>
       </details>
     </div>
