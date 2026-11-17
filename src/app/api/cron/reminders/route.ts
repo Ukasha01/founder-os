@@ -1,6 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planReminders, nextStatus, type Draft } from "@/lib/reminders";
 import { dateInTz } from "@/lib/time";
@@ -24,6 +23,9 @@ export async function GET(req: NextRequest) {
   const db = createAdminClient();
   if (!db) return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY is not set." }, { status: 503 });
 
+  // Loaded on demand: the library is CommonJS, so take its default export if the bundler adds one.
+  const wp = await import("web-push");
+  const webpush = (wp as unknown as { default?: typeof wp }).default ?? wp;
   const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
   const pushOn = !!(pub && priv);
   if (pushOn) webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@example.com", pub!, priv!);
