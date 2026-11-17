@@ -1,7 +1,9 @@
 // Smoke tests that need no login. Run against any deployment:  BASE_URL=https://... node tests/e2e/smoke.mjs
 // They prove the public surface is safe: private pages and data routes bounce to /login, the reminder
 // job refuses callers without the secret, security headers are present, and the offline files are public.
-import { chromium } from "playwright";
+import { createRequire } from "node:module";
+// Resolved with require() so a globally installed Playwright (NODE_PATH) works as well as a local one.
+const { chromium } = createRequire(import.meta.url)("playwright");
 const BASE = (process.env.BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 let failed = 0;
 const check = (ok, name, extra = "") => { console.log(`${ok ? "PASS" : "FAIL"}: ${name}${ok ? "" : " " + extra}`); if (!ok) failed++; };
