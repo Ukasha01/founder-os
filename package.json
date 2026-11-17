@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "node --experimental-strip-types tests/unit/time.test.mts && node --experimental-strip-types tests/unit/habits.test.mts && node --experimental-strip-types tests/unit/score.test.mts && node --experimental-strip-types tests/unit/recurrence.test.mts"
+    "test:unit": "node --experimental-strip-types tests/unit/time.test.mts && node --experimental-strip-types tests/unit/habits.test.mts && node --experimental-strip-types tests/unit/score.test.mts && node --experimental-strip-types tests/unit/recurrence.test.mts && node --experimental-strip-types tests/unit/ai.test.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
