@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { dateInTz, timeInTz } from "@/lib/time";
 import { createMeeting } from "./actions";
@@ -12,7 +13,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
   const [{ data: meetings }, { data: workspaces }, { data: settings }] = await Promise.all([
     supabase.from("meetings").select("id, title, starts_at, status, location").is("deleted_at", null)
       .order("starts_at", { ascending: false, nullsFirst: true }).limit(100),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("user_settings").select("timezone").maybeSingle(),
   ]);
   const tz = settings?.timezone ?? "Asia/Karachi";

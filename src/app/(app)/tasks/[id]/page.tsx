@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { STATUS_LABEL, PRIORITY_LABEL, STATUS_STYLE, PRIORITY_STYLE, badge, formatMinutes, input, card, wsStyle } from "@/lib/ui";
 import { addTimeEntry, createTask, deleteTask, moveTask, rescheduleTask, updateTask } from "../actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -39,7 +40,7 @@ export default async function TaskPage({
       task.parent_task_id
         ? supabase.from("tasks").select("id, title").eq("id", task.parent_task_id).maybeSingle()
         : Promise.resolve({ data: null }),
-      supabase.from("workspaces").select("id, name, color").is("archived_at", null).order("sort_order"),
+      getWorkspaces().then((data) => ({ data })),
       supabase.from("time_entries").select("id, duration_minutes, entry_date, note").eq("task_id", id)
         .order("entry_date", { ascending: false }).limit(20),
       supabase.from("task_activity").select("id, action, field, old_value, new_value, reason, source, created_at")

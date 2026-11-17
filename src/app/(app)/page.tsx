@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { after } from "next/server";
+import { getInboxCount } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { materializeRecurring } from "@/lib/materialize";
 import { loadDay } from "@/lib/dayscore";
 import { addDays } from "@/lib/time";
@@ -14,36 +17,37 @@ import { SubmitButton } from "@/components/submit-button";
 // Dashboard: every widget reads real data; nothing is faked. Empty states say so.
 export default async function HomePage() {
   const supabase = await createClient();
-  const { data: settings } = await supabase.from("user_settings").select("timezone").maybeSingle();
-  const { data: profile } = await supabase.from("profiles").select("display_name").maybeSingle();
-  const { data: workspaces } = await supabase
-    .from("workspaces").select("id, name, description, color").is("archived_at", null).order("sort_order");
+  const [{ data: settings }, { data: profile }, workspaces] = await Promise.all([
+    supabase.from("user_settings").select("timezone").maybeSingle(),
+    supabase.from("profiles").select("display_name").maybeSingle(),
+    getWorkspaces(),
+  ]);
 
   const tz = settings?.timezone ?? "Asia/Karachi";
   // "Today" in the user's timezone (same rule the database uses for overdue).
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
-  // Create upcoming recurring tasks (idempotent). A failure must never break the dashboard.
-  try { await materializeRecurring(supabase, today); } catch { /* ignored */ }
+  // Upcoming recurring tasks are generated 14 days ahead, so today's already exist. Topping them up runs AFTER the
+  // page is sent instead of blocking it. A failure must never break the dashboard.
+  after(async () => { try { await materializeRecurring(supabase, today); } catch { /* ignored */ } });
   const open = ["not_started", "in_progress", "waiting"];
   const dayEnd = new Date(new Date().getTime() + 36 * 3600 * 1000).toISOString();
-  const [{ data: meetingsNext }, { data: commitDue }, day, { data: topTasks }] = await Promise.all([
+  // Everything the screen needs, in ONE parallel wave (these used to run one after another).
+  const [{ data: meetingsNext }, { data: commitDue }, day, { data: topTasks }, { data: dueToday }, { data: overdue }, inbox, { data: todayTime }, { data: habitRows }, { data: habitToday }, { data: unread }] = await Promise.all([
     supabase.from("meetings").select("id, title, starts_at").is("deleted_at", null).eq("status", "scheduled")
       .gte("starts_at", new Date().toISOString()).lte("starts_at", dayEnd).order("starts_at").limit(5),
     supabase.from("commitments").select("id, description, due_date, follow_up_date").is("deleted_at", null).in("status", ["pending", "in_progress"])
       .or(`due_date.lte.${addDays(today, 2)},follow_up_date.lte.${today}`).order("due_date").limit(5),
     loadDay(supabase, today),
     supabase.from("task_overview").select("id, title, priority, workspace_id").in("status", open).in("priority", ["critical", "high"]).order("current_deadline", { nullsFirst: false }).limit(3),
+    supabase.from("task_overview").select("id, title, priority, workspace_id").eq("current_deadline", today).in("status", open).limit(10),
+    supabase.from("task_overview").select("id, title, current_deadline, workspace_id").eq("is_overdue", true).order("current_deadline").limit(10),
+    getInboxCount(),
+    supabase.from("time_entries").select("duration_minutes").eq("entry_date", today),
+    supabase.from("habits").select("id, name, frequency_type, weekdays, weekly_target, start_date").is("archived_at", null).order("created_at"),
+    supabase.from("habit_entries").select("habit_id, status").eq("entry_date", today),
+    supabase.from("notifications").select("id, title, body, link").is("read_at", null).order("created_at", { ascending: false }).limit(5),
   ]);
-  const { data: dueToday } = await supabase.from("task_overview")
-    .select("id, title, priority, workspace_id").eq("current_deadline", today).in("status", open).limit(10);
-  const { data: overdue } = await supabase.from("task_overview")
-    .select("id, title, current_deadline, workspace_id").eq("is_overdue", true).order("current_deadline").limit(10);
-  const { count: inbox } = await supabase.from("quick_capture")
-    .select("id", { count: "exact", head: true }).eq("status", "inbox").is("deleted_at", null);
-  const { data: todayTime } = await supabase.from("time_entries").select("duration_minutes").eq("entry_date", today);
   const minutesToday = (todayTime ?? []).reduce((n: number, e: { duration_minutes: number | null }) => n + (e.duration_minutes ?? 0), 0);
-  const { data: habitRows } = await supabase.from("habits").select("id, name, frequency_type, weekdays, weekly_target, start_date").is("archived_at", null).order("created_at");
-  const { data: habitToday } = await supabase.from("habit_entries").select("habit_id, status").eq("entry_date", today);
   const hStatus = new Map((habitToday ?? []).map((e) => [e.habit_id, e.status as string]));
   const todaysHabits = (habitRows ?? []).filter((h) =>
     h.frequency_type === "weekly_target" || isScheduled({ frequency_type: h.frequency_type as Frequency, weekdays: h.weekdays, weekly_target: h.weekly_target, start_date: h.start_date }, today));
@@ -61,7 +65,6 @@ export default async function HomePage() {
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone: tz }).format(now);
 
-  const { data: unread } = await supabase.from("notifications").select("id, title, body, link").is("read_at", null).order("created_at", { ascending: false }).limit(5);
   const total = day.result.total;
   const ring = total === null ? "bg-neutral-100 text-neutral-500" : total >= 70 ? "bg-emerald-100 text-emerald-800" : total >= 40 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800";
   const head2 = "text-[15px] font-semibold";

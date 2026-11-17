@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card, PRIORITY_LABEL } from "@/lib/ui";
 import { addDays, dateInTz } from "@/lib/time";
 import { createRule, deleteRule, setPaused, skipOccurrence } from "./actions";
@@ -15,7 +16,7 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
   const today = dateInTz(new Date(), settings?.timezone ?? "Asia/Karachi");
   const [{ data: rules }, { data: workspaces }, { data: upcoming }] = await Promise.all([
     supabase.from("recurrence_rules").select("id, name, freq, interval_count, by_weekday, by_monthday, times_of_day, start_date, end_date, is_paused").eq("target_kind", "task").order("created_at"),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("tasks").select("id, title, occurrence_date, status").eq("source", "recurrence").is("deleted_at", null)
       .gte("occurrence_date", today).lte("occurrence_date", addDays(today, 7)).neq("status", "cancelled").order("occurrence_date").limit(50),
   ]);

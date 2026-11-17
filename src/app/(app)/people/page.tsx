@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { createPerson, deletePerson } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -13,7 +14,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   if (term) q = q.or(`name.ilike.%${term.replace(/[%,()]/g, " ")}%,organization.ilike.%${term.replace(/[%,()]/g, " ")}%`);
   const [{ data: people }, { data: workspaces }, { data: open }] = await Promise.all([
     q,
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("commitments").select("made_by_person_id, made_to_person_id").is("deleted_at", null).in("status", ["pending", "in_progress"]),
   ]);
   const openCount = new Map<string, number>();

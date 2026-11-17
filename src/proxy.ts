@@ -22,8 +22,10 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // getUser() verifies the session with Supabase (unlike reading the cookie alone).
-  const { data: { user } } = await supabase.auth.getUser();
+  // getClaims() verifies the signed session token locally and refreshes it when expired. Unlike getUser() it does not
+  // make a network call to Supabase Auth on every request (that call was a large part of the page-load delay).
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ?? null;
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
 

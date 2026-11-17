@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { dateInTz, timeInTz } from "@/lib/time";
 import { addAttendee, createMeetingFollowUp, deleteMeeting, removeAttendee, updateMeeting } from "../actions";
@@ -17,7 +18,7 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
   const [{ data: attendees }, { data: people }, { data: workspaces }, { data: settings }, { data: commitments }] = await Promise.all([
     supabase.from("meeting_attendees").select("person_id, people(name)").eq("meeting_id", id),
     supabase.from("people").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("user_settings").select("timezone").maybeSingle(),
     supabase.from("commitments").select("id, description, status").eq("meeting_id", id).is("deleted_at", null),
   ]);

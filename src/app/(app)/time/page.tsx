@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { addDays, dateInTz, startOfWeek } from "@/lib/time";
 import { formatMinutes, input, card } from "@/lib/ui";
 import { logManual, startTimer, stopTimer } from "./actions";
@@ -13,7 +14,7 @@ export default async function TimePage({ searchParams }: { searchParams: Promise
   const weekFrom = startOfWeek(today, settings?.week_starts_on ?? 1);
 
   const [{ data: workspaces }, { data: tasks }, { data: running }, { data: week }] = await Promise.all([
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("tasks").select("id, title").is("deleted_at", null).in("status", ["not_started", "in_progress", "waiting"]).order("created_at", { ascending: false }).limit(100),
     supabase.from("time_entries").select("id, started_at, task_id, workspace_id").is("duration_minutes", null).maybeSingle(),
     supabase.from("time_entries").select("workspace_id, duration_minutes, entry_date").gte("entry_date", weekFrom).lte("entry_date", addDays(weekFrom, 6)),

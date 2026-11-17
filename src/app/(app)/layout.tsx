@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuth, getInboxCount, getWorkspaces } from "@/lib/data";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import { signOut } from "../(auth)/actions";
 import { CaptureButton } from "./capture/capture-button";
@@ -9,25 +9,19 @@ import { SectionTabs } from "@/components/section-tabs";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!getSupabaseEnv()) redirect("/login");
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const [{ data: workspaces }, { count: inboxCount }] = await Promise.all([
-    supabase.from("workspaces").select("id, name, color").is("archived_at", null).order("sort_order").order("name"),
-    supabase.from("quick_capture").select("id", { count: "exact", head: true }).eq("status", "inbox").is("deleted_at", null),
-  ]);
+  const [claims, workspaces, inboxCount] = await Promise.all([getAuth(), getWorkspaces(), getInboxCount()]);
+  if (!claims) redirect("/login");
 
   return (
     <div className="min-h-dvh md:flex">
-      <AppNav workspaces={workspaces ?? []} inboxCount={inboxCount ?? 0} email={user.email ?? ""} signOut={signOut} />
+      <AppNav workspaces={workspaces} inboxCount={inboxCount} email={(claims.email as string | undefined) ?? ""} signOut={signOut} />
       <main className="min-w-0 flex-1 px-4 pt-3 pb-32 md:px-10 md:pt-8 md:pb-12">
         <div className="max-w-5xl">
-          <SectionTabs inboxCount={inboxCount ?? 0} />
+          <SectionTabs inboxCount={inboxCount} />
           {children}
         </div>
       </main>
-      <CaptureButton workspaces={(workspaces ?? []).map((w) => ({ id: w.id, name: w.name }))} />
+      <CaptureButton workspaces={workspaces.map((w) => ({ id: w.id, name: w.name }))} />
       <SyncManager />
     </div>
   );

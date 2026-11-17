@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { addDays, addMonths, dateInTz, isDateString, rangeUtc, startOfMonth, startOfWeek, timeInTz, weekday, WEEKDAY_KEYS } from "@/lib/time";
 import { formatMinutes, input, btn, card } from "@/lib/ui";
 import { createEvent, deleteEvent, saveCapacity } from "./actions";
@@ -35,7 +36,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       .is("deleted_at", null).neq("status", "cancelled").gte("start_at", start.toISOString()).lt("start_at", end.toISOString()).order("start_at"),
     supabase.from("task_overview").select("id, title, current_deadline, estimated_minutes")
       .in("status", ["not_started", "in_progress", "waiting"]).gte("current_deadline", from).lte("current_deadline", to),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
   ]);
 
   const items: Item[] = [];

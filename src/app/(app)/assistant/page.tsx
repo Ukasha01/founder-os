@@ -19,9 +19,11 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
   const { error } = await searchParams;
   const supabase = await createClient();
   const configured = !!process.env.GEMINI_API_KEY;
-  const { data: st } = await supabase.from("user_settings").select("ai_auto_approve").maybeSingle();
+  const [{ data: st }, { data: conv }] = await Promise.all([
+    supabase.from("user_settings").select("ai_auto_approve").maybeSingle(),
+    supabase.from("ai_conversations").select("id").is("archived_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   const auto = !!st?.ai_auto_approve;
-  const { data: conv } = await supabase.from("ai_conversations").select("id").is("archived_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const [{ data: msgs }, { data: logs }] = conv ? await Promise.all([
     supabase.from("ai_messages").select("id, role, content, created_at").eq("conversation_id", conv.id).order("created_at"),
     supabase.from("ai_action_logs").select("id, message_id, tool_name, status, preview, error").eq("conversation_id", conv.id).eq("tool_kind", "write").order("created_at"),

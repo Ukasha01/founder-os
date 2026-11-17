@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { dateInTz } from "@/lib/time";
 import { createCommitment, createCommitmentTask, deleteCommitment, rescheduleCommitment, setCommitmentStatus } from "./actions";
@@ -14,7 +15,7 @@ export default async function CommitmentsPage({ searchParams }: { searchParams: 
   const [{ data: settings }, { data: people }, { data: workspaces }] = await Promise.all([
     supabase.from("user_settings").select("timezone").maybeSingle(),
     supabase.from("people").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
   ]);
   const today = dateInTz(new Date(), settings?.timezone ?? "Asia/Karachi");
   const person = sp.person && uuidRe.test(sp.person) ? sp.person : null;

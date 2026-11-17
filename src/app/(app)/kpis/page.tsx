@@ -1,5 +1,6 @@
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { addDays, dateInTz, startOfMonth, startOfWeek, addMonths } from "@/lib/time";
 import { archiveKpi, createKpi, recordKpi } from "./actions";
@@ -18,7 +19,7 @@ export default async function KpisPage({ searchParams }: { searchParams: Promise
   const supabase = await createClient();
   const [{ data: settings }, { data: workspaces }, { data: kpis }] = await Promise.all([
     supabase.from("user_settings").select("timezone").maybeSingle(),
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("kpi_definitions").select("id, workspace_id, name, unit, target_value, direction, period, aggregation").is("archived_at", null).order("name"),
   ]);
   const today = dateInTz(new Date(), settings?.timezone ?? "Asia/Karachi");

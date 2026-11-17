@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { CAPTURE_TYPES, PRIORITY_LABEL, input, btn, btnPrimary, card } from "@/lib/ui";
 import { archiveCapture, convertToTask, deleteCapture, saveTriage } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,8 +12,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     .select("id, capture_type, raw_text, workspace_id, priority, due_date, captured_at")
     .eq("status", "inbox").is("deleted_at", null)
     .order("captured_at", { ascending: false });
-  const { data: workspaces } = await supabase
-    .from("workspaces").select("id, name").is("archived_at", null).order("sort_order");
+  const { data: workspaces } = await getWorkspaces().then((data) => ({ data }));
   const typeLabel = Object.fromEntries(CAPTURE_TYPES.map((t) => [t.value, t.label]));
 
   return (

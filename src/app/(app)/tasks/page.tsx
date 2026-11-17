@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { buildTree, type TaskRow } from "@/lib/tasks";
 import { PRIORITY_LABEL, input, card, wsStyle } from "@/lib/ui";
 import { createTask } from "./actions";
@@ -19,8 +20,7 @@ export default async function TasksPage({
   const wsFilter = z.string().uuid().safeParse(sp.workspace).data;
   const supabase = await createClient();
 
-  const { data: workspaces } = await supabase
-    .from("workspaces").select("id, name, color").is("archived_at", null).order("sort_order");
+  const { data: workspaces } = await getWorkspaces().then((data) => ({ data }));
 
   let q = supabase.from("task_overview")
     .select("id, parent_task_id, workspace_id, title, status, priority, current_deadline, original_deadline, child_count, actual_minutes, is_overdue")

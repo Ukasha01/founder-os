@@ -1,5 +1,6 @@
 import { NewPanel } from "@/components/new-panel";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaces } from "@/lib/data";
 import { input, card } from "@/lib/ui";
 import { addMilestone, createGoal, deleteGoal, setGoalStatus, updateMilestone } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,7 +12,7 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
   const { error } = await searchParams;
   const supabase = await createClient();
   const [{ data: workspaces }, { data: goals }, { data: milestones }, { data: progress }] = await Promise.all([
-    supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
+    getWorkspaces().then((data) => ({ data })),
     supabase.from("goals").select("id, workspace_id, name, description, target_date, success_criteria, status").is("deleted_at", null).order("created_at"),
     supabase.from("milestones").select("id, goal_id, title, measure_description, target_value, current_value, unit, due_date, status").order("sort_order").order("created_at"),
     supabase.from("goal_progress").select("goal_id, progress_percent, milestone_count, achieved_count"),
