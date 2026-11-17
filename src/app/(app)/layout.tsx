@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import { signOut } from "../(auth)/actions";
 import { CaptureButton } from "./capture/capture-button";
+import { SyncManager } from "./capture/sync-manager";
 import { AppNav } from "@/components/app-nav";
 import { SectionTabs } from "@/components/section-tabs";
 
@@ -27,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </main>
       <CaptureButton workspaces={(workspaces ?? []).map((w) => ({ id: w.id, name: w.name }))} />
+      <SyncManager />
     </div>
   );
 }

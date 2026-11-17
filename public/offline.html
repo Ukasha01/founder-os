@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#eff2f9">
+<title>Offline · Founder OS</title>
+<style>
+  :root { color-scheme: light; --ink:#1a2138; --line:#d9dfec; }
+  body { margin:0; background:#eff2f9; color:var(--ink); font:16px/1.5 ui-rounded,"Segoe UI Variable",system-ui,sans-serif; display:grid; place-items:center; min-height:100vh; padding:16px; box-sizing:border-box; }
+  main { width:min(30rem,100%); background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.02em; }
+  p { margin:0 0 12px; color:#5b6580; }
+  textarea,select { width:100%; box-sizing:border-box; font:inherit; padding:10px; border:1px solid var(--line); border-radius:10px; margin-bottom:10px; }
+  button { font:inherit; font-weight:600; background:var(--ink); color:#fff; border:0; border-radius:10px; padding:10px 16px; cursor:pointer; }
+  .ok { color:#0a6b46; margin-top:10px; min-height:1.5em; }
+  a { color:var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>You are offline</h1>
+  <p>Anything you write here is saved on this device and sent to your Inbox the next time you open Founder OS with a connection.</p>
+  <form id="f">
+    <textarea id="t" required rows="4" placeholder="What do you want to capture?" aria-label="Capture"></textarea>
+    <select id="k" aria-label="Type">
+      <option value="task">Task</option><option value="idea">Idea</option><option value="reminder">Reminder</option>
+      <option value="promise">Promise</option><option value="note">Note</option><option value="general">Other</option>
+    </select>
+    <button>Save on this device</button>
+  </form>
+  <p class="ok" id="m" role="status"></p>
+  <p><a href="/">Try again</a></p>
+</main>
+<script>
+  // Same database and store as the app (src/lib/offline/idb.ts).
+  const req = indexedDB.open("founder-os-offline", 1);
+  req.onupgradeneeded = () => req.result.createObjectStore("capture_queue", { keyPath: "id" });
+  document.getElementById("f").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = document.getElementById("t").value.trim();
+    if (!text) return;
+    const open = indexedDB.open("founder-os-offline", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("capture_queue", { keyPath: "id" });
+    open.onsuccess = () => {
+      const item = { id: crypto.randomUUID(), raw_text: text, capture_type: document.getElementById("k").value, workspace_id: "", captured_at: new Date().toISOString(), status: "pending" };
+      const tx = open.result.transaction("capture_queue", "readwrite");
+      tx.objectStore("capture_queue").put(item);
+      tx.oncomplete = () => { document.getElementById("t").value = ""; document.getElementById("m").textContent = "Saved on this device. It will be sent when you are back online."; };
+      tx.onerror = () => { document.getElementById("m").textContent = "Could not save on this device."; };
+    };
+    open.onerror = () => { document.getElementById("m").textContent = "Could not save on this device."; };
+  });
+</script>
+</body>
+</html>

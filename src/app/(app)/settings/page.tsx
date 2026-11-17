@@ -3,6 +3,7 @@ import { input, card } from "@/lib/ui";
 import { DEFAULT_WEIGHTS, type Weights } from "@/lib/score";
 import { saveGeneral, saveWeights } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
+import { PushToggle } from "./push-toggle";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const sp = await searchParams;
@@ -28,6 +29,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {fields.map(([k, label]) => <label key={k} className="flex flex-col gap-1 text-xs">{label}<input type="number" name={k} min={0} max={100} step="any" defaultValue={w[k]} className={input} /></label>)}
         <div><SubmitButton variant="primary">Save weights</SubmitButton></div>
       </form>
+      <section className={`${card} mt-4`}>
+        <h2 className="font-medium">Notifications</h2>
+        <p className="mt-1 mb-3 text-sm text-neutral-600">A daily summary of what is due, meetings starting within the hour, and commitments to follow up. They always appear on the Today screen; this also sends them to your phone.</p>
+        <PushToggle publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null} />
+      </section>
+      <section className={`${card} mt-4`}>
+        <h2 className="font-medium">Your data</h2>
+        <p className="mt-1 text-sm text-neutral-600">Your data is yours. Download a full copy at any time, or take your calendar into Google Calendar.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a href="/api/export" className="inline-flex items-center rounded-[10px] bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-[#2c3659]">Download backup (JSON)</a>
+          <a href="/api/calendar" className="inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-medium hover:bg-tint">Download calendar (.ics)</a>
+        </div>
+        <p className="mt-2 text-xs text-neutral-500">The calendar file holds events and open task deadlines. In Google Calendar choose Settings, then Import &amp; export, then Import. It is a one-way copy; changes made in Google do not come back.</p>
+      </section>
     </div>
   );
 }

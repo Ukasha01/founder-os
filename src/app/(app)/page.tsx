@@ -8,6 +8,8 @@ import { wsStyle, card, badge, PRIORITY_STYLE, PRIORITY_LABEL } from "@/lib/ui";
 import { TaskCheck } from "@/components/task-check";
 import { toggleTaskDone } from "./tasks/actions";
 import { toggleHabitToday } from "./habits/actions";
+import { markNotificationsRead } from "./settings/actions";
+import { SubmitButton } from "@/components/submit-button";
 
 // Dashboard: every widget reads real data; nothing is faked. Empty states say so.
 export default async function HomePage() {
@@ -59,6 +61,7 @@ export default async function HomePage() {
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone: tz }).format(now);
 
+  const { data: unread } = await supabase.from("notifications").select("id, title, body, link").is("read_at", null).order("created_at", { ascending: false }).limit(5);
   const total = day.result.total;
   const ring = total === null ? "bg-neutral-100 text-neutral-500" : total >= 70 ? "bg-emerald-100 text-emerald-800" : total >= 40 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800";
   const head2 = "text-[15px] font-semibold";
@@ -74,6 +77,16 @@ export default async function HomePage() {
           {total === null ? "Day score: no data yet" : `Day score ${total}/100`}
         </Link>
       </div>
+
+      {unread && unread.length > 0 && (
+        <section className="mt-5 rounded-2xl bg-amber-50 p-4">
+          <div className="flex items-center justify-between"><h2 className="text-[15px] font-semibold text-amber-900">Reminders</h2>
+            <form action={markNotificationsRead}><SubmitButton>Mark all read</SubmitButton></form></div>
+          <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+            {unread.map((n) => <li key={n.id}><Link href={n.link ?? "/"} className="font-medium text-amber-900 hover:underline">{n.title}</Link>{n.body && <span className="text-amber-800"> · {n.body}</span>}</li>)}
+          </ul>
+        </section>
+      )}
 
       <div className="mt-5 grid grid-cols-3 gap-2.5">
         <Link href="/inbox" className="rounded-2xl bg-ws-violet-tint p-3.5 transition hover:brightness-95">
