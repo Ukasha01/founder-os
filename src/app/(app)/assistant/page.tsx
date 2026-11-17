@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { card, input, badge } from "@/lib/ui";
+import { card, badge } from "@/lib/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { askAssistant, approveAction, rejectAction, newChat, saveToInbox } from "./actions";
+import { approveAction, approveAll, rejectAction, newChat, saveToInbox, setAutoApprove } from "./actions";
+import { Composer } from "./composer";
 
 type Msg = { id: string; role: string; content: string | null; created_at: string };
 type Log = { id: string; message_id: string | null; tool_name: string; status: string; preview: { text?: string } | null; error: string | null };
@@ -18,14 +19,18 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
   const { error } = await searchParams;
   const supabase = await createClient();
   const configured = !!process.env.GEMINI_API_KEY;
+  const { data: st } = await supabase.from("user_settings").select("ai_auto_approve").maybeSingle();
+  const auto = !!st?.ai_auto_approve;
   const { data: conv } = await supabase.from("ai_conversations").select("id").is("archived_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const [{ data: msgs }, { data: logs }] = conv ? await Promise.all([
     supabase.from("ai_messages").select("id, role, content, created_at").eq("conversation_id", conv.id).order("created_at"),
-    supabase.from("ai_action_logs").select("id, message_id, tool_name, status, preview, error").eq("conversation_id", conv.id).order("created_at"),
+    supabase.from("ai_action_logs").select("id, message_id, tool_name, status, preview, error").eq("conversation_id", conv.id).eq("tool_kind", "write").order("created_at"),
   ]) : [{ data: [] }, { data: [] }];
   const byMsg = new Map<string, Log[]>();
   for (const l of (logs ?? []) as Log[]) if (l.message_id) byMsg.set(l.message_id, [...(byMsg.get(l.message_id) ?? []), l]);
   const lastUser = [...((msgs ?? []) as Msg[])].reverse().find((m) => m.role === "user")?.content ?? "";
+  const waiting = ((logs ?? []) as Log[]).filter((l) => l.status === "awaiting_approval").length;
+  const lastReply = [...((msgs ?? []) as Msg[])].reverse().find((m) => m.role === "assistant" && m.content);
   const lastWasSystem = (msgs as Msg[] | null)?.at(-1)?.role === "system";
 
   return (
@@ -35,8 +40,12 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
           <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Assistant</h1>
           <p className="text-sm text-neutral-500">Tell it what you want in English, Urdu or Roman Urdu. It proposes changes; nothing happens until you approve.</p>
         </div>
-        {(msgs?.length ?? 0) > 0 && <form action={newChat}><SubmitButton>New chat</SubmitButton></form>}
+        <div className="flex gap-2">
+          <form action={setAutoApprove}><input type="hidden" name="on" value={String(!auto)} /><SubmitButton>{auto ? "Auto-approve: on" : "Auto-approve: off"}</SubmitButton></form>
+          {(msgs?.length ?? 0) > 0 && <form action={newChat}><SubmitButton>New chat</SubmitButton></form>}
+        </div>
       </div>
+      {auto && <p className="mt-3 rounded-xl bg-sky-50 p-3 text-sm text-sky-900">Auto-approve is on: the assistant&apos;s changes run immediately and appear below as Done. Deletions still ask you first. Turn it off any time.</p>}
       {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {!configured && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">The assistant is not switched on yet: no Gemini key is set. Everything else in the app works normally.</p>}
 
@@ -45,10 +54,12 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
           <div className="rounded-2xl border border-dashed border-line-strong bg-surface/60 p-6 text-sm text-neutral-600">
             <p className="font-medium text-ink">Try saying</p>
             <ul className="mt-2 list-disc pl-5">
+              <li>How did I perform this week?</li>
+              <li>What is due today, and what is overdue?</li>
               <li>Add a task in Wapsi to follow up with the courier partner by Friday</li>
-              <li>Move my report task to next Monday</li>
-              <li>Maine 45 minutes Wapsi demo pe kaam kiya (log 45 minutes)</li>
-              <li>Mark the pitch deck task as done</li>
+              <li>Maine aaj Wapsi demo pe 45 minute kaam kiya, aur namaz aur exercise kar li</li>
+              <li>Move my report task to next Monday and mark the pitch deck as done</li>
+              <li>Schedule a meeting with Ali tomorrow at 4pm, and log this week&apos;s sales as 12</li>
             </ul>
           </div>
         )}
@@ -85,11 +96,10 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
         )}
       </div>
 
-      <form action={askAssistant} className="sticky bottom-20 mt-6 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-pop md:bottom-4">
-        <input name="message" required maxLength={2000} autoComplete="off" placeholder={configured ? "What should I do?" : "Assistant is not switched on yet"} disabled={!configured}
-          className={`${input} min-w-0 flex-1 border-0 focus:ring-0`} aria-label="Message the assistant" />
-        <SubmitButton variant="primary">Send</SubmitButton>
-      </form>
+      {waiting > 1 && (
+        <form action={approveAll} className="mt-4"><SubmitButton variant="primary">Approve all {waiting} actions</SubmitButton></form>
+      )}
+      <Composer enabled={configured} lastReply={lastReply ? { id: lastReply.id, text: lastReply.content ?? "" } : null} />
     </div>
   );
 }
