@@ -59,22 +59,29 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     s.source = src; src.start();
   }), []);
 
-  const browserSpeak = useCallback((text: string, token: number) => new Promise<boolean>((resolve) => {
+  // The phone's own voice answers instantly, costs nothing and never runs out. Voices load late on some browsers, so wait briefly.
+  const findVoice = useCallback(async (urdu: boolean): Promise<SpeechSynthesisVoice | null> => {
     const synth = window.speechSynthesis;
-    if (!synth) return resolve(false);
-    const urdu = isUrdu(text);
-    const voices = synth.getVoices();
-    const voice = voices.find((v) => v.lang.toLowerCase().startsWith(urdu ? "ur" : "en"));
-    if (urdu && !voice) {
-      if (!S.current.noUrduVoiceWarned) { S.current.noUrduVoiceWarned = true; setNotice("This phone has no Urdu voice, so I'm replying in text. Add a voice key (see GUIDE.md) to hear Urdu."); }
-      return resolve(false);
+    if (!synth) return null;
+    const pick = () => synth.getVoices().find((v) => v.lang.toLowerCase().replace("_", "-").startsWith(urdu ? "ur" : "en")) ?? null;
+    let v = pick();
+    if (!v && !synth.getVoices().length) await new Promise<void>((res) => { const t = setTimeout(res, 800); synth.addEventListener("voiceschanged", () => { clearTimeout(t); res(); }, { once: true }); });
+    v = pick();
+    return v;
+  }, []);
+
+  const localSpeak = useCallback(async (parts: string[], voice: SpeechSynthesisVoice, token: number) => {
+    const synth = window.speechSynthesis;
+    for (const p of parts) {
+      if (token !== S.current.speakToken) return;
+      await new Promise<void>((resolve) => {
+        const u = new SpeechSynthesisUtterance(p);
+        u.voice = voice; u.lang = voice.lang; u.rate = 1.05;
+        u.onend = () => resolve(); u.onerror = () => resolve();
+        synth.speak(u);
+      });
     }
-    const u = new SpeechSynthesisUtterance(text);
-    if (voice) u.voice = voice; u.lang = voice?.lang ?? (urdu ? "ur-PK" : "en-US");
-    u.onend = () => resolve(true); u.onerror = () => resolve(true);
-    if (token !== S.current.speakToken) return resolve(true);
-    synth.speak(u);
-  }), []);
+  }, []);
 
   const speak = useCallback(async (text: string) => {
     const s = S.current;
@@ -85,29 +92,33 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     const sentences = text.slice(0, 600).split(/(?<=[.!?۔؟])\s+/).filter(Boolean);
     const parts: string[] = [];
     for (const x of sentences) { if (parts.length && (parts[parts.length - 1] + " " + x).length <= 220) parts[parts.length - 1] += " " + x; else parts.push(x); }
-    const ac = new AbortController(); s.abort = ac;
-    const fetchPart = async (p: string) => {
-      const r = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: p }), signal: ac.signal });
-      if (!r.ok) throw new Error(String(r.status));
-      return s.ctx!.decodeAudioData(await r.arrayBuffer());
-    };
-    let next: Promise<AudioBuffer> | null = parts.length ? fetchPart(parts[0]) : null;
-    next?.catch(() => undefined);
-    for (let i = 0; i < parts.length && token === s.speakToken; i++) {
-      const cur = next!;
-      next = i + 1 < parts.length ? fetchPart(parts[i + 1]) : null;
+    const urdu = isUrdu(text);
+    const local = await findVoice(urdu);
+    if (token !== s.speakToken) return;
+    if (local) await localSpeak(parts, local, token);
+    else {
+      // No phone voice for this language: use the server voice (ElevenLabs / Gemini) if one is set up.
+      const ac = new AbortController(); s.abort = ac;
+      const fetchPart = async (p: string) => {
+        const r = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: p }), signal: ac.signal });
+        if (!r.ok) throw new Error(String(r.status));
+        return s.ctx!.decodeAudioData(await r.arrayBuffer());
+      };
+      let next: Promise<AudioBuffer> | null = parts.length ? fetchPart(parts[0]) : null;
       next?.catch(() => undefined);
-      try { await playBuffer(await cur, token); }
-      catch {
-        if (token !== s.speakToken) break;
-        // Server voice not available (no key, limit reached, offline): use the phone's own voice if it has one.
-        const ok = await browserSpeak(parts.slice(i).join(" "), token);
-        if (!ok && !s.noUrduVoiceWarned && !isUrdu(text)) setNotice("Voice replies are unavailable right now; showing text only.");
-        break;
+      for (let i = 0; i < parts.length && token === s.speakToken; i++) {
+        const cur = next!;
+        next = i + 1 < parts.length ? fetchPart(parts[i + 1]) : null;
+        next?.catch(() => undefined);
+        try { await playBuffer(await cur, token); }
+        catch {
+          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? "This phone has no Urdu voice and no voice key is set, so I reply in text. Install the Urdu voice in Android settings (Google text-to-speech), or add a voice key." : "Voice replies are unavailable right now; showing text only."); }
+          break;
+        }
       }
     }
     if (token === s.speakToken) { s.abort = null; if (s.running) set("listening"); }
-  }, [browserSpeak, playBuffer, set, stopSpeaking]);
+  }, [findVoice, localSpeak, playBuffer, set, stopSpeaking]);
 
   const handleUtterance = useCallback(async (wav: Uint8Array) => {
     const s = S.current;

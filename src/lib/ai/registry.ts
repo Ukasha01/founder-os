@@ -147,6 +147,71 @@ export async function runRead(c: Ctx, name: ToolName, args: Json): Promise<Json>
       const { data } = await q.order("name");
       return { people: data ?? [] };
     }
+    case "list_inbox": {
+      const { data } = await supabase.from("quick_capture").select("id, raw_text, capture_type, source, captured_at").eq("status", "inbox").order("captured_at", { ascending: false }).limit(40);
+      return { count: data?.length ?? 0, items: (data ?? []).map((x) => ({ id: x.id, text: x.raw_text, type: x.capture_type, source: x.source, captured: dateInTz(new Date(x.captured_at), tz) })) };
+    }
+    case "list_events": {
+      const a = TOOLS.list_events.schema.parse(args); const range = a.range ?? "today";
+      let q = supabase.from("calendar_events").select("id, title, event_type, start_at, end_at, all_day, location, status, is_fixed, workspace_id").is("deleted_at", null).neq("status", "cancelled").limit(60);
+      const now = new Date().toISOString();
+      if (range === "today" || range === "tomorrow") { const d = range === "today" ? today : addDays(today, 1); const r = rangeUtc(d, d, tz); q = q.gte("start_at", r.start.toISOString()).lt("start_at", r.end.toISOString()); }
+      else if (range === "week") { const r = rangeUtc(today, addDays(today, 6), tz); q = q.gte("start_at", r.start.toISOString()).lt("start_at", r.end.toISOString()); }
+      else if (range === "past") q = q.lt("start_at", now); else q = q.gte("start_at", now);
+      const { data } = await q.order("start_at", { ascending: range !== "past" });
+      const hm = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+      return { events: (data ?? []).map((x) => ({ id: x.id, title: x.title, type: x.event_type, date: dateInTz(new Date(x.start_at), tz), from: x.all_day ? "all day" : hm.format(new Date(x.start_at)), to: x.end_at && !x.all_day ? hm.format(new Date(x.end_at)) : null, location: x.location, fixed: x.is_fixed, workspace: wsName.get(x.workspace_id) })) };
+    }
+    case "list_time_entries": {
+      const a = TOOLS.list_time_entries.schema.parse(args); const period = a.period ?? "today";
+      const from = period === "week" ? addDays(today, -6) : period === "month" ? addDays(today, -29) : period === "yesterday" ? addDays(today, -1) : today;
+      const to = period === "yesterday" ? from : today;
+      const [{ data }, { data: tk }] = await Promise.all([
+        supabase.from("time_entries").select("task_id, workspace_id, entry_date, duration_minutes, note").gte("entry_date", from).lte("entry_date", to).order("entry_date", { ascending: false }).limit(200),
+        supabase.from("tasks").select("id, title").is("deleted_at", null).limit(2000),
+      ]);
+      const tn = new Map((tk ?? []).map((t) => [t.id, t.title]));
+      const rows = data ?? [];
+      const byWs: Record<string, number> = {};
+      for (const r of rows) byWs[wsName.get(r.workspace_id) ?? "?"] = (byWs[wsName.get(r.workspace_id) ?? "?"] ?? 0) + (r.duration_minutes ?? 0);
+      return { from, to, total_minutes: rows.reduce((n, r) => n + (r.duration_minutes ?? 0), 0), minutes_by_workspace: byWs,
+        entries: rows.slice(0, 40).map((r) => ({ date: r.entry_date, minutes: r.duration_minutes, task: r.task_id ? tn.get(r.task_id) : null, note: r.note })) };
+    }
+    case "get_task": {
+      const a = TOOLS.get_task.schema.parse(args);
+      const [{ data: t }, { data: subs }, { data: com }, { data: time }, { data: act }] = await Promise.all([
+        supabase.from("tasks").select("id, title, description, notes, status, priority, workspace_id, estimated_minutes, completed_at, created_at").eq("id", a.task_id).is("deleted_at", null).maybeSingle(),
+        supabase.from("task_overview").select("id, title, status, current_deadline").eq("parent_task_id", a.task_id).limit(40),
+        supabase.from("task_comments").select("body, created_at").eq("task_id", a.task_id).order("created_at", { ascending: false }).limit(10),
+        supabase.from("time_entries").select("duration_minutes").eq("task_id", a.task_id).limit(500),
+        supabase.from("task_activity").select("action, field, reason, created_at").eq("task_id", a.task_id).order("created_at", { ascending: false }).limit(10),
+      ]);
+      if (!t) return { error: "No task with that id." };
+      const { data: ov } = await supabase.from("task_overview").select("current_deadline, original_deadline").eq("id", a.task_id).maybeSingle();
+      return { task: { ...t, workspace: wsName.get(t.workspace_id), workspace_id: undefined, deadline: ov?.current_deadline ?? null, original_deadline: ov?.original_deadline ?? null },
+        subtasks: subs ?? [], comments: com ?? [], minutes_logged: (time ?? []).reduce((n, r) => n + (r.duration_minutes ?? 0), 0), recent_history: act ?? [] };
+    }
+    case "list_reviews": {
+      const a = TOOLS.list_reviews.schema.parse(args);
+      const { data } = await supabase.from("daily_reviews").select("review_date, score_total, wins, blockers, tomorrow_plan, review_completed_at, actual_minutes").gte("review_date", addDays(today, -(a.days ?? 7))).order("review_date", { ascending: false }).limit(30);
+      return { reviews: (data ?? []).map((r) => ({ date: r.review_date, score: r.score_total, completed: !!r.review_completed_at, minutes_worked: r.actual_minutes, wins: r.wins, blockers: r.blockers, tomorrow_plan: r.tomorrow_plan })) };
+    }
+    case "list_recurring": {
+      const { data } = await supabase.from("recurrence_rules").select("id, name, target_kind, freq, interval_count, by_weekday, start_date, end_date, is_paused, workspace_id").order("name").limit(60);
+      return { rules: (data ?? []).map((r) => ({ ...r, workspace: wsName.get(r.workspace_id), workspace_id: undefined })) };
+    }
+    case "search": {
+      const a = TOOLS.search.schema.parse(args); const like = `%${a.text.replace(/[%_,()]/g, "")}%`;
+      const [tasks, goals, people, meetings, inbox, commits] = await Promise.all([
+        supabase.from("task_overview").select("id, title, status, current_deadline, workspace_id").or(`title.ilike.${like}`).limit(10),
+        supabase.from("goals").select("id, name, status").is("deleted_at", null).ilike("name", like).limit(5),
+        supabase.from("people").select("id, name, organization").is("deleted_at", null).ilike("name", like).limit(5),
+        supabase.from("meetings").select("id, title, starts_at").is("deleted_at", null).ilike("title", like).limit(5),
+        supabase.from("quick_capture").select("id, raw_text").eq("status", "inbox").ilike("raw_text", like).limit(5),
+        supabase.from("commitments").select("id, description, due_date, status").is("deleted_at", null).ilike("description", like).limit(5),
+      ]);
+      return { tasks: (tasks.data ?? []).map((t) => ({ ...t, workspace: wsName.get(t.workspace_id), workspace_id: undefined })), goals: goals.data ?? [], people: people.data ?? [], meetings: meetings.data ?? [], inbox: inbox.data ?? [], commitments: commits.data ?? [] };
+    }
     default: return { error: `${name} is not a read tool.` };
   }
 }

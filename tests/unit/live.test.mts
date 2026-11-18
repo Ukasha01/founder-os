@@ -16,19 +16,19 @@ test("VAD: silence produces nothing; speech then a long pause ends the utterance
   const v = new Vad();
   assert.deepEqual(run(v, 0.003, 3000), []);
   assert.deepEqual(run(v, 0.1, 1000), ["start"]);
-  assert.deepEqual(run(v, 0.003, 1000), []);          // a one-second pause does NOT cut the speaker off
-  assert.deepEqual(run(v, 0.003, 600), ["end"]);      // 1.6 s of silence ends it
+  assert.deepEqual(run(v, 0.003, 800), []);           // a short thinking pause does NOT cut the speaker off
+  assert.deepEqual(run(v, 0.003, 400), ["end"]);      // 1.2 s of silence ends it
 });
 test("VAD: a pause mid-sentence followed by more speech keeps one utterance", () => {
   const v = new Vad();
-  const ev = [...run(v, 0.1, 800), ...run(v, 0.003, 1200), ...run(v, 0.1, 800), ...run(v, 0.003, 1600)];
+  const ev = [...run(v, 0.1, 800), ...run(v, 0.003, 800), ...run(v, 0.1, 800), ...run(v, 0.003, 1600)];
   assert.deepEqual(ev, ["start", "end"]);
 });
 test("VAD: a short click is ignored and a tiny blip is discarded", () => {
   const v = new Vad();
   assert.deepEqual(run(v, 0.2, 60), []);              // 60 ms click never starts speech
   assert.deepEqual(run(v, 0.003, 500), []);
-  const ev = [...run(v, 0.1, 160), ...run(v, 0.003, 1700)]; // 160 ms of sound: starts, but is too short to send
+  const ev = [...run(v, 0.1, 160), ...run(v, 0.003, 1300)]; // 160 ms of sound: starts, but is too short to send
   assert.deepEqual(ev, ["start", "discard"]);
 });
 test("VAD: adapts to a noisy room instead of firing constantly", () => {
@@ -104,4 +104,64 @@ test("voice provider selection honours explicit choice and falls back sensibly",
   assert.equal(pickProvider({ GEMINI_API_KEY: "k", ELEVENLABS_API_KEY: "e", TTS_PROVIDER: "gemini" }), "gemini");
   assert.equal(pickProvider({ GEMINI_API_KEY: "k", TTS_PROVIDER: "elevenlabs" }), "gemini"); // asked for a provider with no key
   assert.equal(pickProvider({ GEMINI_API_KEY: "k", TTS_PROVIDER: "off" }), "off");
+});
+
+import { routeTools, TOOLS } from "../../src/lib/ai/tools.ts";
+import { providerOrder, toOpenAiMessages, toOpenAiTools, parseOpenAi, compatProviders } from "../../src/lib/ai/llm.ts";
+import { toGeminiContents, generationConfig } from "../../src/lib/ai/gemini.ts";
+import { sttOrder } from "../../src/lib/ai/speech.ts";
+
+test("tool routing: every read tool always, writes only for the topic mentioned", () => {
+  const reads = Object.entries(TOOLS).filter(([, t]) => t.kind === "read").map(([k]) => k);
+  const a = routeTools("what is in my inbox");
+  for (const r of reads) assert.ok(a.includes(r), r);
+  assert.ok(a.includes("create_task") && !a.includes("create_habit") && !a.includes("delete_task"));
+  assert.ok(routeTools("Maine aaj 45 minute kaam kiya aur namaz padh li").includes("log_time"));
+  assert.ok(routeTools("Maine aaj 45 minute kaam kiya aur namaz padh li").includes("log_habit"));
+  assert.ok(routeTools("میری نماز لاگ کرو").includes("log_habit"));
+  assert.ok(routeTools("kal 4 baje meeting rakho").includes("create_meeting"));
+  assert.ok(routeTools("yeh task delete kar do").includes("delete_task"));
+  assert.ok(routeTools("اس ٹاسک کو ڈیلیٹ کرو").includes("delete_task"));
+  for (const n of routeTools("everything goal habit kpi meeting delete review")) assert.ok(n in TOOLS, n);
+});
+test("provider order: fast providers first, Gemini as fallback, explicit choice honoured", () => {
+  assert.deepEqual(providerOrder({}), []);
+  assert.deepEqual(providerOrder({ GEMINI_API_KEY: "g" }), ["gemini"]);
+  assert.deepEqual(providerOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q" }), ["groq", "gemini"]);
+  assert.deepEqual(providerOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q", CEREBRAS_API_KEY: "c" }), ["cerebras", "groq", "gemini"]);
+  assert.deepEqual(providerOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q", LLM_PROVIDER: "gemini" }), ["gemini", "groq"]);
+  assert.equal(compatProviders({ GROQ_API_KEY: "q", GROQ_MODEL: "m" })[0].model, "m");
+});
+test("OpenAI-style conversion keeps tool calls and results paired by id", () => {
+  const msgs = toOpenAiMessages("SYS", [
+    { role: "user", text: "inbox?" },
+    { role: "assistant", text: "", calls: [{ id: "c1", name: "list_inbox", args: {} }] },
+    { role: "tool", results: [{ id: "c1", name: "list_inbox", output: { count: 1 } }] },
+  ]);
+  assert.equal(msgs[0].role, "system");
+  assert.equal((msgs[2].tool_calls as { id: string }[])[0].id, "c1");
+  assert.equal(msgs[3].tool_call_id, "c1");
+  const tools = toOpenAiTools(["list_inbox"]);
+  assert.equal(tools.length, 1);
+  assert.equal((tools[0].function.parameters as { type: string }).type, "object");
+  const p = parseOpenAi({ choices: [{ message: { content: "<think>x</think>ok", tool_calls: [{ id: "a", function: { name: "list_tasks", arguments: "{\"due\":\"today\"}" } }, { id: "b", function: { name: "x", arguments: "{broken" } }] } }] })!;
+  assert.equal(p.text, "ok");
+  assert.deepEqual(p.calls[0].args, { due: "today" });
+  assert.deepEqual(p.calls[1].args, {});
+  assert.equal(parseOpenAi({}), null);
+});
+test("Gemini conversion echoes raw parts only for Gemini turns; thinking is off only for 2.5", () => {
+  const raw = [{ functionCall: { name: "list_inbox", args: {} }, thoughtSignature: "sig" }];
+  const g = toGeminiContents([{ role: "assistant", text: "", calls: [{ id: "g0", name: "list_inbox", args: {} }], raw, provider: "gemini" }]);
+  assert.deepEqual(g[0].parts, raw);
+  const o = toGeminiContents([{ role: "assistant", text: "hi", calls: [{ id: "c", name: "list_inbox", args: {} }], provider: "groq" }]);
+  assert.equal(o[0].parts.length, 2);
+  assert.deepEqual(generationConfig("gemini-2.5-flash"), { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } });
+  assert.deepEqual(generationConfig("gemini-3.0-flash"), { temperature: 0.2 });
+});
+test("speech-to-text provider order", () => {
+  assert.deepEqual(sttOrder({}), []);
+  assert.deepEqual(sttOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q" }), ["gemini", "groq"]);
+  assert.deepEqual(sttOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q", STT_PROVIDER: "groq" }), ["groq", "gemini"]);
+  assert.deepEqual(sttOrder({ GROQ_API_KEY: "q", STT_PROVIDER: "gemini" }), ["groq"]);
 });

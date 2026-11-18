@@ -16,7 +16,7 @@ export type VadOptions = {
   maxUtteranceMs: number;
 };
 
-export const DEFAULT_VAD: VadOptions = { absMin: 0.012, ratio: 3, startMs: 120, bargeMs: 320, bargeBoost: 2, hangoverMs: 1500, minSpeechMs: 350, maxUtteranceMs: 45000 };
+export const DEFAULT_VAD: VadOptions = { absMin: 0.012, ratio: 3, startMs: 120, bargeMs: 320, bargeBoost: 2, hangoverMs: 1100, minSpeechMs: 350, maxUtteranceMs: 45000 };
 
 export class Vad {
   private o: VadOptions;

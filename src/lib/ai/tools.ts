@@ -40,6 +40,14 @@ export const TOOLS = {
   list_commitments: { kind: "read", desc: "Open commitments, in both directions, with people.", schema: z.object({}), params: {} },
   list_people: { kind: "read", desc: "People in the address book.", schema: z.object({ search: opt(100) }), params: { search: s("Name contains") } },
 
+  list_inbox: { kind: "read", desc: "The unsorted Inbox: every note, idea, promise or reminder waiting to be sorted, with its full text.", schema: z.object({}), params: {} },
+  list_events: { kind: "read", desc: "Calendar events (classes, time blocks, appointments, deadlines, prayers, recurring activities) in a range.", schema: z.object({ range: z.enum(["today", "tomorrow", "week", "upcoming", "past"]).optional() }), params: { range: e(["today", "tomorrow", "week", "upcoming", "past"], "default today") } },
+  list_time_entries: { kind: "read", desc: "Time logged on tasks: minutes per entry and total, for a period.", schema: z.object({ period: z.enum(["today", "yesterday", "week", "month"]).optional() }), params: { period: e(["today", "yesterday", "week", "month"], "default today") } },
+  get_task: { kind: "read", desc: "Everything about ONE task: notes, subtasks, comments, time logged and recent history. Needs the task id (use list_tasks or search first).", schema: z.object({ task_id: uuid }), params: { task_id: s("Task id") }, required: ["task_id"] },
+  list_reviews: { kind: "read", desc: "Recent daily reviews: score, wins, blockers and tomorrow's plan.", schema: z.object({ days: z.number().int().min(1).max(30).optional() }), params: { days: i("How many recent days, default 7") } },
+  list_recurring: { kind: "read", desc: "Recurring task and event rules (daily, weekly, monthly) and whether they are paused.", schema: z.object({}), params: {} },
+  search: { kind: "read", desc: "Find anything by words: searches task titles and notes, goals, people, meetings, inbox notes and commitments at once. Use when you do not know which kind of item it is.", schema: z.object({ text: txt(100) }), params: { text: s("Words to look for") }, required: ["text"] },
+
   // ---------- tasks ----------
   create_task: { kind: "write", desc: "Create a task, or a subtask when parent_task_id is given.", schema: z.object({ title: txt(500), workspace: opt(100), parent_task_id: uuid.optional(), priority: priority.optional(), deadline: date.optional(), estimated_minutes: z.number().int().min(1).max(100000).optional() }),
     params: { title: s("Short task title"), workspace: s("Workspace name; omit for a subtask"), parent_task_id: s("Parent task id"), priority: e(["critical", "high", "normal", "low"]), deadline: s(D), estimated_minutes: i("Estimated minutes") }, required: ["title"] },
@@ -115,6 +123,28 @@ export const FUNCTION_DECLARATIONS = (Object.entries(TOOLS) as [ToolName, Spec][
     { type: p.t, description: p.d || undefined, ...(p.e ? { enum: [...p.e] } : {}), ...(p.t === "ARRAY" ? { items: { type: "INTEGER" } } : {}) }])), ...(t.required ? { required: t.required } : {}) },
 }));
 
+// Token-limited providers get only the tools that fit the request: every read tool, a few common write tools, and the
+// write tools whose topic the message mentions (English, Roman Urdu or Urdu script). Providers with large limits get all.
+const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox"];
+const GROUPS: [RegExp, string[]][] = [
+  [/\b(log|logged|worked|work|minutes?|mins?|hours?|ghant[ae]|time)\b|گھنٹ|منٹ|کام کیا|وقت/i, ["log_time"]],
+  [/goal|milestone|target|objective|مقصد|ہدف|گول/i, ["create_goal", "add_milestone", "update_milestone", "set_goal_status"]],
+  [/habit|namaz|salah|prayer|quran|exercise|workout|gym|run|streak|عادت|نماز|قرآن|ورزش|جم/i, ["create_habit", "log_habit"]],
+  [/kpi|sales|revenue|orders?|metric|users?|signups?|سیل|آرڈر|بکری/i, ["create_kpi", "record_kpi"]],
+  [/person|people|contact|promise|promised|commit|وعدہ|وعدے|بندہ|شخص/i, ["create_person", "create_commitment", "complete_commitment"]],
+  [/meeting|call|zoom|میٹنگ|ملاقات|کال/i, ["create_meeting", "update_meeting"]],
+  [/event|class|lecture|schedule|calendar|every|daily|weekly|monthly|recurring|roz|har\b|کلاس|ہر |روز|ہفتے|شیڈیول/i, ["create_event", "create_recurring_task"]],
+  [/review|wins?|blockers?|reflect|ریویو|جائزہ/i, ["save_daily_review"]],
+  [/\bmove\b|workspace|shift|منتقل/i, ["move_task"]],
+  [/delete|remove|hata|mita|ڈیلیٹ|ہٹا|مٹا|حذف/i, ["delete_task"]],
+];
+export function routeTools(userText: string): string[] {
+  const reads = (Object.keys(TOOLS) as ToolName[]).filter((n) => TOOLS[n].kind === "read");
+  const writes = new Set<string>(CORE_WRITE);
+  for (const [re, names] of GROUPS) if (re.test(userText)) for (const n of names) writes.add(n);
+  return [...reads, ...writes];
+}
+
 export type Workspace = { id: string; name: string };
 // Matches a spoken name to exactly one real item. Ambiguous or unknown names fail loudly.
 export function resolveByName<T extends { id: string; name: string }>(name: string | undefined, list: T[], what = "workspace"): T | { error: string } {
@@ -132,7 +162,7 @@ export const SYSTEM_PROMPT = `You are the executive assistant inside Founder OS,
 LANGUAGE: he mixes Urdu and English. Understand Urdu script, Roman Urdu and English, and mixed sentences; spoken input may contain recognition mistakes, so infer the likely meaning and confirm only if it matters.
 Reply in the language he used. If he wrote or spoke Urdu or Roman Urdu, reply in natural, simple, spoken Pakistani Urdu written in Urdu script (not Hindi words, not stiff or bookish Urdu). Keep task names, app words and technical terms in English letters, as he says them. Write numbers as digits.
 If INPUT MODE is voice, your reply is read aloud: at most two or three short sentences, no lists, no markdown, no emojis, no ids. If he only said a short command like stop, thanks or okay, answer in a few words.
-FACTS: for anything about his data, tasks, progress or performance, call the read tools first. Never guess numbers or ids. Quote the figures the tools return.
+FACTS: the context below already lists his open tasks, today's schedule and Inbox. If the answer is there, answer at once without calling a tool. For anything else about his data (details, history, performance, other lists, search), call the read tools first, in ONE turn together when you need several. Never guess numbers or ids. Quote the figures the tools return.
 ACTIONS: write tools only PROPOSE a change; the user approves it (or it runs automatically if he enabled auto-approve). Never say something is already done. Say what you propose, in one line.
 Use ids exactly as returned by read tools or the context. If the task or item is not found, ask one short question or use add_to_inbox.
 Resolve relative dates ("tomorrow", "Friday") from TODAY in the context. Dates are YYYY-MM-DD; date-times are local YYYY-MM-DDTHH:mm.

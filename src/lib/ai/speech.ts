@@ -47,17 +47,18 @@ export function toPlayable(a: { bytes: Uint8Array; mime: string }): { bytes: Uin
 
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
 
-export async function transcribe(wav: Uint8Array): Promise<SttResult> {
+async function sttGemini(wav: Uint8Array): Promise<SttResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "not_configured", message: "No Gemini key is set." };
-  const model = process.env.GEMINI_STT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  // flash-lite has its own, larger free allowance than the main model, so listening does not use up the thinking quota.
+  const model = process.env.GEMINI_STT_MODEL || "gemini-2.5-flash-lite";
   try {
     const res = await fetch(`${GEMINI}/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: STT_PROMPT }, { inlineData: { mimeType: "audio/wav", data: Buffer.from(wav).toString("base64") } }] }],
-        generationConfig: { temperature: 0 },
+        generationConfig: { temperature: 0, ...(/gemini-2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
       }),
       signal: AbortSignal.timeout(20000),
     });
@@ -67,6 +68,47 @@ export async function transcribe(wav: Uint8Array): Promise<SttResult> {
   } catch {
     return { ok: false, reason: "unavailable", message: "Could not reach Gemini (timeout or network)." };
   }
+}
+
+// Whisper on Groq: very fast, free allowance counted in audio seconds. Language is pinned to Urdu because Whisper's
+// auto-detect often mistakes Urdu for Hindi or Arabic; the hint text keeps English words (task, deadline) intact.
+async function sttGroq(wav: Uint8Array): Promise<SttResult> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) return { ok: false, reason: "not_configured", message: "No Groq key is set." };
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([wav as BlobPart], { type: "audio/wav" }), "speech.wav");
+    form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
+    form.append("language", process.env.STT_LANGUAGE || "ur");
+    form.append("temperature", "0");
+    form.append("prompt", "یہ اردو اور انگریزی ملا کر بولا گیا ہے۔ Task, deadline, inbox, meeting, Wapsi, KEELVON, habit, goal.");
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(20000) });
+    if (res.status === 429) return { ok: false, reason: "quota", message: "Groq's free limit is reached for now." };
+    if (!res.ok) return { ok: false, reason: "unavailable", message: `Groq speech recognition is unavailable (HTTP ${res.status}).` };
+    return { ok: true, text: cleanTranscript(String(((await res.json()) as { text?: string }).text ?? "")) };
+  } catch {
+    return { ok: false, reason: "unavailable", message: "Could not reach Groq (timeout or network)." };
+  }
+}
+
+export function sttOrder(env: Record<string, string | undefined>): ("gemini" | "groq")[] {
+  const all: ("gemini" | "groq")[] = [];
+  if (env.GEMINI_API_KEY) all.push("gemini");
+  if (env.GROQ_API_KEY) all.push("groq");
+  const want = (env.STT_PROVIDER ?? "").toLowerCase();
+  return all.includes(want as "gemini" | "groq") ? [want as "gemini" | "groq", ...all.filter((x) => x !== want)] : all;
+}
+
+export async function transcribe(wav: Uint8Array): Promise<SttResult> {
+  const order = sttOrder(process.env);
+  if (!order.length) return { ok: false, reason: "not_configured", message: "No speech key is set." };
+  let last: SttResult | null = null;
+  for (const p of order) {
+    const r = p === "gemini" ? await sttGemini(wav) : await sttGroq(wav);
+    if (r.ok) return r;
+    last = !last || r.reason === "quota" ? r : last;
+  }
+  return last!;
 }
 
 export type TtsProvider = "elevenlabs" | "gemini" | "off";

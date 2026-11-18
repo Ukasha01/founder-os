@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { askGemini, textContent, type GeminiContent } from "./gemini";
+import { askLlm, type Msg, type ToolResult } from "./llm";
 import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } from "./tools";
 import { runRead, validateWrite, executeWrite, type Ctx } from "./registry";
 import { addDays, dateInTz, rangeUtc } from "../time";
@@ -64,40 +64,46 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
     .insert({ conversation_id: conversationId, role: "user", content: message, input_mode: voice ? "voice" : "text" }).select("id").single();
   if (e1 || !userMsg) return { ok: false, error: e1?.message ?? "Could not save your message." };
 
-  const [{ data: tasks }, { data: past }, { data: st }] = await Promise.all([
+  const todayRange = rangeUtc(c.today, c.today, c.tz);
+  const [{ data: tasks }, { data: past }, { data: st }, { data: inbox }, { data: events }, { data: meets }] = await Promise.all([
     supabase.from("task_overview").select("id, title, priority, current_deadline, workspace_id").in("status", ["not_started", "in_progress", "waiting"]).order("current_deadline", { nullsFirst: false }).limit(25),
-    supabase.from("ai_messages").select("role, content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]).order("created_at", { ascending: false }).limit(12),
+    supabase.from("ai_messages").select("role, content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]).order("created_at", { ascending: false }).limit(10),
     supabase.from("user_settings").select("ai_auto_approve").maybeSingle(),
+    supabase.from("quick_capture").select("id, raw_text").eq("status", "inbox").order("captured_at", { ascending: false }).limit(12),
+    supabase.from("calendar_events").select("title, start_at, end_at, all_day").is("deleted_at", null).neq("status", "cancelled").gte("start_at", todayRange.start.toISOString()).lt("start_at", todayRange.end.toISOString()).order("start_at").limit(15),
+    supabase.from("meetings").select("title, starts_at").is("deleted_at", null).eq("status", "scheduled").gte("starts_at", todayRange.start.toISOString()).lt("starts_at", todayRange.end.toISOString()).order("starts_at").limit(10),
   ]);
   const wsName = new Map(c.workspaces.map((w) => [w.id, w.name]));
-  const context = `TODAY: ${c.today} (${c.tz}); tomorrow is ${addDays(c.today, 1)}\nINPUT MODE: ${voice ? "voice (spoken; your reply will be read aloud, so keep it short and conversational)" : "typed"}\nWORKSPACES: ${c.workspaces.map((w) => w.name).join(", ")}\nSOME OPEN TASKS (id | title | workspace | priority | deadline; use list_tasks for more):\n` +
+  const hm = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: c.tz });
+  const schedule = [...(events ?? []).map((e) => `${e.all_day ? "all day" : hm.format(new Date(e.start_at))} ${e.title}`), ...(meets ?? []).map((m) => `${hm.format(new Date(m.starts_at))} meeting: ${m.title}`)].join("; ");
+  const context = `TODAY: ${c.today} (${c.tz}); tomorrow is ${addDays(c.today, 1)}\nINPUT MODE: ${voice ? "voice (spoken; your reply will be read aloud, so keep it short and conversational)" : "typed"}\nWORKSPACES: ${c.workspaces.map((w) => w.name).join(", ")}\nTODAY'S SCHEDULE: ${schedule || "nothing scheduled"}\n` +
+    `INBOX (${inbox?.length ?? 0} unsorted; id | text): ${(inbox ?? []).map((x) => `${x.id} | ${x.raw_text}`).join(" || ") || "empty"}\n` +
+    `SOME OPEN TASKS (id | title | workspace | priority | deadline; use list_tasks for more):\n` +
     ((tasks ?? []).map((t) => `${t.id} | ${t.title} | ${wsName.get(t.workspace_id)} | ${t.priority} | ${t.current_deadline ?? "none"}`).join("\n") || "(none)");
-  const contents: GeminiContent[] = (past ?? []).reverse().filter((m) => m.content).map((m) => textContent(m.role === "user" ? "user" : "model", m.content as string));
+  const msgs: Msg[] = (past ?? []).reverse().filter((m) => m.content).map((m): Msg => m.role === "user" ? { role: "user", text: m.content as string } : { role: "assistant", text: m.content as string, calls: [] });
 
   const proposals: Proposal[] = [];
   const readLog: { tool_name: string; input: Record<string, unknown> }[] = [];
   let finalText = "", model = "", failure: string | null = null;
-  for (let round = 0; round < 5; round++) {
-    const r = await askGemini(contents, context);
+  for (let round = 0; round < 4; round++) {
+    const r = await askLlm(msgs, context, { voice, userText: message });
     if (!r.ok) { failure = r.message; break; }
-    model = r.model;
+    model = `${r.provider}:${r.model}`;
     const reads = r.calls.filter((x) => isToolName(x.name) && isRead(x.name));
     for (const x of r.calls) if (!(isToolName(x.name) && isRead(x.name))) proposals.push({ name: x.name, args: x.args });
     if (!reads.length) { finalText = r.text; break; }
-    // Answer every call the model made, in order: reads with real data, writes with "queued".
-    const answers = [];
-    for (const x of r.calls) {
+    // Answer every call the model made, in order: reads with real data (all at once), writes with "queued".
+    const results: ToolResult[] = await Promise.all(r.calls.map(async (x): Promise<ToolResult> => {
       if (isToolName(x.name) && isRead(x.name)) {
         let out: Record<string, unknown>;
         try { out = await runRead(c, x.name, x.args); } catch (e) { out = { error: e instanceof Error ? e.message.slice(0, 200) : "Could not read that." }; }
         readLog.push({ tool_name: x.name, input: x.args });
-        answers.push({ functionResponse: { name: x.name, response: { output: out } } });
-      } else {
-        answers.push({ functionResponse: { name: x.name, response: { output: { status: "queued: shown to the user for approval" } } } });
+        return { id: x.id, name: x.name, output: out };
       }
-    }
-    contents.push({ role: "model", parts: r.parts }, { role: "user", parts: answers });
-    if (round === 4) finalText = r.text || "I looked up your data but ran out of steps. Please ask again, more specifically.";
+      return { id: x.id, name: x.name, output: { status: "queued: shown to the user for approval" } };
+    }));
+    msgs.push({ role: "assistant", text: r.text, calls: r.calls, raw: r.raw, provider: r.provider }, { role: "tool", results });
+    if (round === 3) finalText = r.text || "I looked up your data but ran out of steps. Please ask again, more specifically.";
   }
 
   if (failure && !proposals.length) {

@@ -56,3 +56,13 @@ Code: https://github.com/Ukasha01/founder-os (every push to `main` redeploys aut
 4. When it proposes a change, say "haan" to approve or "nahi" to skip. Deletions are never approved by voice; confirm those on screen. Or turn on Auto-approve in the Assistant screen.
 5. Voice out: add `ELEVENLABS_API_KEY` (best quality, limited free characters) or rely on the Gemini voice (uses `GEMINI_API_KEY`). If neither speaks Urdu well, replies still appear as text.
 6. Limits: it only listens while the app is open on screen. Each sentence you speak uses Gemini requests (understand, think, speak), so the free daily limit goes faster than with typing.
+
+### Faster and with more free allowance (do this once)
+
+Gemini's free allowance is small and its answers are slower. Add a free Groq key and the assistant answers in about a second, and Gemini becomes the backup when either one hits its limit.
+
+1. Go to console.groq.com, sign in, create an API key (no card needed).
+2. In Vercel: your project, Settings, Environment Variables, add `GROQ_API_KEY`, then redeploy.
+3. Optional: a second free fast provider, `CEREBRAS_API_KEY` from cloud.cerebras.ai.
+
+What the voice assistant can read now: tasks (with notes, subtasks, comments, history), Inbox, calendar events, meetings, time logged, daily reviews, recurring rules, goals, habits, KPIs, people, commitments, performance, and a search across all of them. It can change things only through the approval flow.
