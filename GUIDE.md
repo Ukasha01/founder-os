@@ -47,3 +47,12 @@ Code: https://github.com/Ukasha01/founder-os (every push to `main` redeploys aut
 - Google Calendar is a file import, not a live two-way sync. No email reminders yet.
 - Gemini's free limits and Vercel's non-commercial Hobby terms should be checked by you before relying on them for the business.
 - Sign-in screens still have the old plain look; screens are good but not best yet. That polish pass is next.
+
+## Voice assistant (Urdu, always listening)
+
+1. Open the app on Android Chrome and tap the round mic button once. Allow the microphone. From then on the app starts listening by itself when you open it (Chrome only lets a page do that after you have allowed the mic once). Tap the button to turn it off.
+2. Just talk, in Urdu, English or mixed. It waits through pauses (about 1.5 seconds of silence ends your sentence), understands you with Gemini, and answers by voice.
+3. Say "ruk jao", "bas", "stop" or "chup" while it speaks and it stops at once. Starting a new sentence also interrupts it.
+4. When it proposes a change, say "haan" to approve or "nahi" to skip. Deletions are never approved by voice; confirm those on screen. Or turn on Auto-approve in the Assistant screen.
+5. Voice out: add `ELEVENLABS_API_KEY` (best quality, limited free characters) or rely on the Gemini voice (uses `GEMINI_API_KEY`). If neither speaks Urdu well, replies still appear as text.
+6. Limits: it only listens while the app is open on screen. Each sentence you speak uses Gemini requests (understand, think, speak), so the free daily limit goes faster than with typing.
