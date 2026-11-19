@@ -13,7 +13,7 @@ export const STT_PROMPT =
 
 // Models sometimes "transcribe" background sound instead of speech: "[silence]", "موسیقی" (music), "Thank you for watching".
 // Those must never reach the assistant, or it answers sounds that were not words.
-const NON_SPEECH = new Set(["موسیقی", "میوزک", "music", "noise", "silence", "inaudible", "applause", "laughter", "تالیاں", "تالی", "شور", "خاموشی", "ہنسی", "♪", "♪♪", "..."]);
+const NON_SPEECH = new Set(["موسیقی", "میوزک", "music", "noise", "silence", "inaudible", "applause", "laughter", "تالیاں", "تالی", "شور", "خاموشی", "ہنسی", "بولا گیا ہے", "♪", "♪♪", "..."]);
 const HALLUCINATIONS = [/^thanks? for watching/i, /^thank you for watching/i, /^subtitles? by/i, /^please subscribe/i, /^like and subscribe/i, /^شکریہ[۔.!\s]*$/, /^دیکھنے کے لیے شکریہ/, /^ترجمہ/, /^اسے دیکھنے کے لیے/];
 export function cleanTranscript(raw: string): string {
   const t = raw.trim().replace(/^["“]|["”]$/g, "").trim();
@@ -85,9 +85,10 @@ async function sttGroq(wav: Uint8Array): Promise<SttResult> {
     const form = new FormData();
     form.append("file", new Blob([wav as BlobPart], { type: "audio/wav" }), "speech.wav");
     form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
-    form.append("language", process.env.STT_LANGUAGE || "ur");
+    // Logs showed Whisper repeating its own hint text ("...ملا کر بولا گیا ہے") as if you had said it, and forcing Urdu
+    // turned English sentences into Urdu-script gibberish. So: no hint text, and the language is detected unless STT_LANGUAGE is set.
+    if (process.env.STT_LANGUAGE) form.append("language", process.env.STT_LANGUAGE);
     form.append("temperature", "0");
-    form.append("prompt", "یہ اردو اور انگریزی ملا کر بولا گیا ہے۔ Task, deadline, inbox, meeting, Wapsi, KEELVON, habit, goal.");
     const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(20000) });
     if (res.status === 429) return { ok: false, reason: "quota", message: "Groq's free limit is reached for now." };
     if (!res.ok) return { ok: false, reason: "unavailable", message: `Groq speech recognition is unavailable (HTTP ${res.status}).` };

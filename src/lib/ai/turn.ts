@@ -4,7 +4,7 @@ import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } 
 import { runRead, validateWrite, executeWrite, type Ctx } from "./registry";
 import { addDays, dateInTz, rangeUtc } from "../time";
 import { classifyDecision } from "../voice-commands";
-import { composeReply, isUrdu } from "./reply";
+import { composeReply, isUrdu, localize } from "./reply";
 
 // One assistant turn, shared by the typed form (redirect-based server action) and the live voice endpoint (JSON).
 export async function currentConversation(supabase: SupabaseClient): Promise<string> {
@@ -48,7 +48,7 @@ export async function runLog(c: Ctx, logId: string): Promise<boolean> {
 async function handleDecision(c: Ctx, conversationId: string, decision: "yes" | "no", urdu: boolean): Promise<TurnResult | null> {
   const { data: last } = await c.supabase.from("ai_messages").select("id, created_at").eq("conversation_id", conversationId).eq("role", "assistant").order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!last || Date.now() - new Date(last.created_at).getTime() > 10 * 60_000) return null;
-  const { data: logs } = await c.supabase.from("ai_action_logs").select("id, preview").eq("message_id", last.id).eq("tool_kind", "write").eq("status", "awaiting_approval").order("created_at");
+  const { data: logs } = await c.supabase.from("ai_action_logs").select("id, preview, tool_name, validated_input").eq("message_id", last.id).eq("tool_kind", "write").eq("status", "awaiting_approval").order("created_at");
   if (!logs?.length) return null;
   const text = async (reply: string, extra: Partial<Extract<TurnResult, { ok: true }>>): Promise<TurnResult> => {
     await c.supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "assistant", content: reply, model: "app" });
@@ -60,7 +60,7 @@ async function handleDecision(c: Ctx, conversationId: string, decision: "yes" | 
   }
   const done: string[] = [], errors: string[] = [];
   for (const l of logs) {
-    const label = (l.preview as { text?: string } | null)?.text ?? "action";
+    const label = localize(l.tool_name, l.validated_input as Record<string, unknown> | null ?? undefined, (l.preview as { text?: string } | null)?.text ?? "action", urdu);
     if (await runLog(c, l.id)) done.push(label);
     else {
       const { data: row } = await c.supabase.from("ai_action_logs").select("error").eq("id", l.id).maybeSingle();
@@ -169,11 +169,11 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
       status: v.ok ? "awaiting_approval" : "failed", error: v.ok ? null : v.error, model, idempotency_key: `${aMsg?.id ?? userMsg.id}:${i}`,
     }).select("id").single();
     if (!v.ok) { refused++; errors.push(v.error); continue; }
-    if (auto && !confirm && row) { if (await runLog(c, row.id)) { executed++; done.push(v.preview); } else { refused++; errors.push(v.preview); } } else { pending++; waiting.push(v.preview); }
+    if (auto && !confirm && row) { if (await runLog(c, row.id)) { executed++; done.push(localize(x.name, v.input as Record<string, unknown>, v.preview, urdu)); } else { refused++; errors.push(localize(x.name, v.input as Record<string, unknown>, v.preview, urdu)); } } else { pending++; waiting.push(localize(x.name, v.input as Record<string, unknown>, v.preview, urdu)); }
   }
   if (failure) await supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "system", content: failure });
   // When changes were proposed or made, the reply is built from what really happened, not from the model's wording.
-  const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - 8) });
+  const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - 8), heard: voice ? message : undefined });
   if (aMsg && proposals.length) await supabase.from("ai_messages").update({ content: reply }).eq("id", aMsg.id);
   return { ok: true, reply, pending, executed, refused, warning: failure ?? undefined };
 }

@@ -166,7 +166,7 @@ test("speech-to-text provider order", () => {
   assert.deepEqual(sttOrder({ GROQ_API_KEY: "q", STT_PROVIDER: "gemini" }), ["groq"]);
 });
 
-import { composeReply } from "../../src/lib/ai/reply.ts";
+import { composeReply, localize } from "../../src/lib/ai/reply.ts";
 test("yes/no decisions: tolerant of fillers, strict about new requests", () => {
   for (const s of ["yes haan", "haan ji", "ji kar do", "bilkul", "ہاں", "ہاں بھائی کر دو", "ok do it".replace("it", "kar"), "yes please"]) assert.equal(classifyDecision(s), "yes", s);
   for (const s of ["nahi", "nahi nahi", "نہیں", "no", "mat karo", "cancel"]) assert.equal(classifyDecision(s), "no", s);
@@ -187,4 +187,11 @@ test("composeReply builds truthful, language-matched replies", () => {
 test("routing: typo and bulk phrasing still reach delete tools", () => {
   assert.ok(routeTools("deelte all tasks").includes("bulk_tasks"));
   assert.ok(routeTools("undo that").includes("undo_last_delete"));
+});
+test("Urdu conversations get Urdu previews and a 'heard' echo for confirmations", () => {
+  const u = localize("bulk_tasks", { action: "delete", count: 72, match: "nn" }, "DELETE 72 tasks", true);
+  assert.ok(!/[A-Za-z]{3,}/.test(u.replace(/“nn”/, "")), u);
+  assert.equal(localize("bulk_tasks", {}, "DELETE 72 tasks", false), "DELETE 72 tasks");
+  const r = composeReply({ urdu: false, modelText: "", done: [], waiting: ["DELETE 5 tasks"], errors: [], heard: "delete nn" });
+  assert.match(r, /^I heard: “delete nn”\./);
 });
