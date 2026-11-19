@@ -22,7 +22,7 @@ type Compat = { name: string; base: string; key: string; model: string };
 export function compatProviders(env: Record<string, string | undefined>): Compat[] {
   const list: Compat[] = [];
   if (env.CEREBRAS_API_KEY) list.push({ name: "cerebras", base: "https://api.cerebras.ai/v1", key: env.CEREBRAS_API_KEY, model: env.CEREBRAS_MODEL || "llama-3.3-70b" });
-  if (env.GROQ_API_KEY) list.push({ name: "groq", base: "https://api.groq.com/openai/v1", key: env.GROQ_API_KEY, model: env.GROQ_MODEL || "llama-3.3-70b-versatile" });
+  if (env.GROQ_API_KEY) list.push({ name: "groq", base: "https://api.groq.com/openai/v1", key: env.GROQ_API_KEY, model: env.GROQ_MODEL || "openai/gpt-oss-120b" });
   return list;
 }
 
@@ -35,8 +35,16 @@ export function providerOrder(env: Record<string, string | undefined>): string[]
 
 const lower = (v: unknown): unknown => Array.isArray(v) ? v.map(lower) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === "type" && typeof x === "string" ? x.toLowerCase() : lower(x)])) : v;
 
+// Free tiers count tokens per minute and per day, and the tool list is sent on every request, so it is sent compactly:
+// first sentence of each description, and parameter descriptions only where the name alone would be unclear (dates, times).
+const KEEP_PARAM_DESC = /^(date|deadline|new_deadline|target_date|due_date|follow_up_date|starts_at|ends_at|start|end|until)/;
+function compactParams(params: unknown): unknown {
+  const p = lower(params) as { properties?: Record<string, { description?: string }> };
+  for (const [k, v] of Object.entries(p.properties ?? {})) if (v.description && !KEEP_PARAM_DESC.test(k) && !/YYYY/.test(v.description)) delete v.description;
+  return p;
+}
 export function toOpenAiTools(names: string[] | null) {
-  return FUNCTION_DECLARATIONS.filter((d) => !names || names.includes(d.name)).map((d) => ({ type: "function", function: { name: d.name, description: d.description, parameters: lower(d.parameters) } }));
+  return FUNCTION_DECLARATIONS.filter((d) => !names || names.includes(d.name)).map((d) => ({ type: "function", function: { name: d.name, description: d.description.split(/(?<=\.)\s/)[0], parameters: compactParams(d.parameters) } }));
 }
 
 export function toOpenAiMessages(system: string, msgs: Msg[]): Record<string, unknown>[] {
@@ -64,16 +72,13 @@ export function parseOpenAi(body: unknown): { text: string; calls: ToolCall[] } 
 
 async function askCompat(p: Compat, msgs: Msg[], context: string, o: LlmOpts): Promise<LlmResult> {
   try {
-    const res = await fetch(`${p.base}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${p.key}` },
-      body: JSON.stringify({
-        model: p.model, temperature: 0.2, max_tokens: 700,
-        messages: toOpenAiMessages(`${SYSTEM_PROMPT}\n\n${context}`, msgs),
-        tools: toOpenAiTools(routeTools(o.userText)), tool_choice: "auto",
-      }),
-      signal: AbortSignal.timeout(20000),
+    // gpt-oss models "reason" before answering; those tokens count against the free limits, so keep it light.
+    const body = { model: p.model, temperature: 0.2, max_tokens: 700, messages: toOpenAiMessages(`${SYSTEM_PROMPT}\n\n${context}`, msgs), tools: toOpenAiTools(routeTools(o.userText)), tool_choice: "auto" };
+    const post = (extra: Record<string, unknown>) => fetch(`${p.base}/chat/completions`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${p.key}` }, body: JSON.stringify({ ...body, ...extra }), signal: AbortSignal.timeout(20000),
     });
+    let res = await post(/gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {});
+    if (res.status === 400 && /gpt-oss/.test(p.model)) res = await post({});   // in case the setting is not accepted
     if (res.status === 429) return { ok: false, reason: "quota", message: `${p.name}'s free limit is reached for now.` };
     if (!res.ok) return { ok: false, reason: res.status === 400 ? "bad_response" : "unavailable", message: `${p.name} is unavailable right now (HTTP ${res.status}).` };
     const parsed = parseOpenAi(await res.json());
