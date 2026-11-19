@@ -59,6 +59,10 @@ export const TOOLS = {
     params: { task_id: s("Task id"), new_deadline: s(D), reason: s("Why it moved") }, required: ["task_id", "new_deadline"] },
   move_task: { kind: "write", desc: "Move a task (with its subtasks) to another workspace.", schema: z.object({ task_id: uuid, workspace: txt(100) }), params: { task_id: s("Task id"), workspace: s("Target workspace name") }, required: ["task_id", "workspace"] },
   delete_task: { kind: "write", confirm: true, desc: "Delete a task and its subtasks. Always needs the user's confirmation.", schema: z.object({ task_id: uuid }), params: { task_id: s("Task id") }, required: ["task_id"] },
+  bulk_tasks: { kind: "write", confirm: true, desc: "Delete, complete or cancel MANY tasks at once that match a title (optionally in one workspace). Use this once instead of many single-task calls. The user sees the count first and must confirm.",
+    schema: z.object({ action: z.enum(["delete", "complete", "cancel"]), title_equals: opt(300), title_contains: opt(300), workspace: opt(100) }).refine((v) => v.title_equals || v.title_contains, "Give the title to match."),
+    params: { action: e(["delete", "complete", "cancel"]), title_equals: s("Exact title, any capitals"), title_contains: s("Part of the title"), workspace: s("Workspace name, optional") }, required: ["action"] },
+  undo_last_delete: { kind: "write", desc: "Bring back the tasks the assistant deleted most recently (works for 7 days). Use when the user says undo, wapas, restore or that a deletion was a mistake.", schema: z.object({}), params: {} },
   log_time: { kind: "write", desc: "Record minutes already worked on a task.", schema: z.object({ task_id: uuid, minutes: z.number().int().min(1).max(1440), note: opt(500) }),
     params: { task_id: s("Task id"), minutes: i("Minutes worked"), note: s("Note") }, required: ["task_id", "minutes"] },
 
@@ -125,7 +129,7 @@ export const FUNCTION_DECLARATIONS = (Object.entries(TOOLS) as [ToolName, Spec][
 
 // Token-limited providers get only the tools that fit the request: every read tool, a few common write tools, and the
 // write tools whose topic the message mentions (English, Roman Urdu or Urdu script). Providers with large limits get all.
-const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox"];
+const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete"];
 const GROUPS: [RegExp, string[]][] = [
   [/\b(log|logged|worked|work|minutes?|mins?|hours?|ghant[ae]|time)\b|گھنٹ|منٹ|کام کیا|وقت/i, ["log_time"]],
   [/goal|milestone|target|objective|مقصد|ہدف|گول/i, ["create_goal", "add_milestone", "update_milestone", "set_goal_status"]],
@@ -136,7 +140,6 @@ const GROUPS: [RegExp, string[]][] = [
   [/event|class|lecture|schedule|calendar|every|daily|weekly|monthly|recurring|roz|har\b|کلاس|ہر |روز|ہفتے|شیڈیول/i, ["create_event", "create_recurring_task"]],
   [/review|wins?|blockers?|reflect|ریویو|جائزہ/i, ["save_daily_review"]],
   [/\bmove\b|workspace|shift|منتقل/i, ["move_task"]],
-  [/delete|remove|hata|mita|ڈیلیٹ|ہٹا|مٹا|حذف/i, ["delete_task"]],
 ];
 export function routeTools(userText: string): string[] {
   const reads = (Object.keys(TOOLS) as ToolName[]).filter((n) => TOOLS[n].kind === "read");
@@ -163,7 +166,8 @@ LANGUAGE: he mixes Urdu and English. Understand Urdu script, Roman Urdu and Engl
 Reply in the language he used. If he wrote or spoke Urdu or Roman Urdu, reply in natural, simple, spoken Pakistani Urdu written in Urdu script (not Hindi words, not stiff or bookish Urdu). Keep task names, app words and technical terms in English letters, as he says them. Write numbers as digits.
 If INPUT MODE is voice, your reply is read aloud: at most two or three short sentences, no lists, no markdown, no emojis, no ids. If he only said a short command like stop, thanks or okay, answer in a few words.
 FACTS: the context below already lists his open tasks, today's schedule and Inbox. If the answer is there, answer at once without calling a tool. For anything else about his data (details, history, performance, other lists, search), call the read tools first, in ONE turn together when you need several. Never guess numbers or ids. Quote the figures the tools return.
-ACTIONS: write tools only PROPOSE a change; the user approves it (or it runs automatically if he enabled auto-approve). Never say something is already done. Say what you propose, in one line.
+ACTIONS: write tools only PROPOSE a change; the app shows the user exactly what will happen, asks him to confirm, and tells him when it is done. So call the tool and keep your own text to at most one short line. Never claim something is done and never say you cannot delete: you can.
+MANY TASKS: to delete, complete or cancel several tasks that share a title, call bulk_tasks ONCE (action plus the title and, if he named one, the workspace). Never repeat delete_task for each one. If he says undo, wapas or that a deletion was a mistake, call undo_last_delete.
 Use ids exactly as returned by read tools or the context. If the task or item is not found, ask one short question or use add_to_inbox.
 Resolve relative dates ("tomorrow", "Friday") from TODAY in the context. Dates are YYYY-MM-DD; date-times are local YYYY-MM-DDTHH:mm.
 Make several write calls in one turn when the request has several parts. If something is unclear, ask one short question instead of guessing. Deleting always needs the user's confirmation.

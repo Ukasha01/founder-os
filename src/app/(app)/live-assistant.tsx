@@ -17,12 +17,6 @@ const LABEL: Record<Ui, string> = {
 };
 const store = { get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 const isUrdu = (t: string) => /[؀-ۿ]/.test(t);
-// Short spoken follow-ups, in the language of the reply.
-const SAY = {
-  ur: { done: "ہو گیا۔", wait: (n: number) => `${n} تبدیلیاں آپ کی منظوری کا انتظار کر رہی ہیں۔ ہاں کہیں یا نہیں۔`, failed: "کچھ تبدیلیاں نہیں ہو سکیں۔", tap: "حذف کرنے کے لیے اسکرین پر تصدیق کریں۔" },
-  en: { done: "Done.", wait: (n: number) => `${n} change${n > 1 ? "s are" : " is"} waiting. Say yes or no.`, failed: "Some changes could not be made.", tap: "Please confirm deletions on screen." },
-};
-
 export function LiveAssistant({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   const [ui, setUi] = useState<Ui>("off");
@@ -37,7 +31,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     running: false, ctx: null as AudioContext | null, stream: null as MediaStream | null, node: null as AudioWorkletNode | null,
     vad: new Vad(), preroll: [] as Float32Array[], prerollLen: 0, chunks: [] as Float32Array[], inUtt: false, calibrating: 0,
     ui: "off" as Ui, epoch: 0, speakToken: 0, source: null as AudioBufferSourceNode | null, abort: null as AbortController | null,
-    pending: false, lastLevel: 0, noUrduVoiceWarned: false,
+    lastText: "", lastAt: 0, lastLevel: 0, noUrduVoiceWarned: false,
   });
   const set = useCallback((u: Ui) => { S.current.ui = u; setUi(u); }, []);
 
@@ -101,7 +95,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
       const ac = new AbortController(); s.abort = ac;
       const fetchPart = async (p: string) => {
         const r = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: p }), signal: ac.signal });
-        if (!r.ok) throw new Error(String(r.status));
+        if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
         return s.ctx!.decodeAudioData(await r.arrayBuffer());
       };
       let next: Promise<AudioBuffer> | null = parts.length ? fetchPart(parts[0]) : null;
@@ -111,8 +105,9 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
         next = i + 1 < parts.length ? fetchPart(parts[i + 1]) : null;
         next?.catch(() => undefined);
         try { await playBuffer(await cur, token); }
-        catch {
-          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? "This phone has no Urdu voice and no voice key is set, so I reply in text. Install the Urdu voice in Android settings (Google text-to-speech), or add a voice key." : "Voice replies are unavailable right now; showing text only."); }
+        catch (e) {
+          const why = e instanceof Error ? e.message : "";
+          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? `اس ڈیوائس میں اردو آواز نہیں ہے اور سرور کی آواز بھی نہیں چلی (${why})۔ جواب لکھا ہوا دکھایا جا رہا ہے۔` : `Voice is unavailable (${why}); showing text only.`); }
           break;
         }
       }
@@ -136,33 +131,22 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     if (!text) return set("listening");
     setHeard(text); setNotice(""); setOpen(true);
 
-    const cmd = classifyCommand(text);
-    if (cmd === "stop") { stopSpeaking(); return set("listening"); }
-    if ((cmd === "yes" || cmd === "no") && s.pending) {
-      set("thinking");
-      try {
-        const r = await fetch("/api/assistant/decide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision: cmd === "yes" ? "approve" : "reject" }) });
-        const j = (await r.json()) as { done?: number; failed?: number; needsTap?: number; skipped?: number };
-        s.pending = false; router.refresh();
-        const say = isUrdu(text) ? SAY.ur : SAY.en;
-        const msg = cmd === "no" ? (isUrdu(text) ? "ٹھیک ہے، چھوڑ دیا۔" : "Okay, skipped.") : [j.done ? say.done : "", j.failed ? say.failed : "", j.needsTap ? say.tap : ""].filter(Boolean).join(" ") || say.done;
-        setReply(msg); if (!stale()) await speak(msg); else set("listening");
-      } catch { setNotice("Could not save that. Try again."); set("listening"); }
-      return;
-    }
+    // The same sentence heard twice in a row (echo, or the recogniser repeating itself) is answered once.
+    const now = Date.now();
+    if (text === s.lastText && now - s.lastAt < 8000) return set("listening");
+    s.lastText = text; s.lastAt = now;
+
+    if (classifyCommand(text) === "stop") { stopSpeaking(); return set("listening"); }
 
     set("thinking");
     try {
       const r = await fetch("/api/assistant/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: text, voice: true }) });
-      const j = (await r.json()) as { ok: boolean; error?: string; reply?: string; pending?: number; executed?: number; refused?: number };
+      const j = (await r.json()) as { ok: boolean; error?: string; reply?: string };
       router.refresh();
       if (!j.ok) { setNotice(j.error ?? "The assistant could not answer."); return set("listening"); }
-      s.pending = (j.pending ?? 0) > 0;
-      const say = isUrdu(`${text} ${j.reply ?? ""}`) ? SAY.ur : SAY.en;
-      const extra = [(j.executed ?? 0) > 0 ? say.done : "", (j.refused ?? 0) > 0 ? say.failed : "", s.pending ? say.wait(j.pending!) : ""].filter(Boolean).join(" ");
-      const out = [j.reply ?? "", extra].filter(Boolean).join(" ");
+      const out = j.reply ?? "";
       setReply(out);
-      if (stale()) return;           // you started talking again while I was thinking: do not talk over you
+      if (stale() || !out) return set("listening");   // you started talking again while I was thinking: do not talk over you
       await speak(out);
     } catch { setNotice("Could not reach the assistant. Check your connection."); set("listening"); }
   }, [router, set, speak, stopSpeaking]);
@@ -200,7 +184,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     s.node?.disconnect(); s.node = null;
     s.stream?.getTracks().forEach((t) => t.stop()); s.stream = null;
     void s.ctx?.close().catch(() => undefined); s.ctx = null;
-    s.inUtt = false; s.chunks = []; s.preroll = []; s.prerollLen = 0; s.pending = false;
+    s.inUtt = false; s.chunks = []; s.preroll = []; s.prerollLen = 0;
     set("off");
   }, [set, stopSpeaking]);
 

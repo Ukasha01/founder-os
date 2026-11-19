@@ -226,6 +226,8 @@ const LABEL: Record<string, [string, string, string]> = {
 export async function validateWrite(c: Ctx, name: ToolName, args: Json): Promise<Validated> {
   const parsed = TOOLS[name].schema.safeParse(args);
   if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ") };
+  if (name === "bulk_tasks") return validateBulk(c, parsed.data as Json);
+  if (name === "undo_last_delete") return validateUndo(c);
   const input: Json = { ...(parsed.data as Json) };
   const labels: Record<string, string> = {};
   for (const [field, [table, col, what]] of Object.entries(LABEL)) {
@@ -268,6 +270,43 @@ export async function validateWrite(c: Ctx, name: ToolName, args: Json): Promise
   return { ok: true, input, preview: preview(name, input, labels, wsLabel) };
 }
 
+
+// ---- many tasks at once -----------------------------------------------------------------------------------------
+// Exactly the tasks shown in the preview are the ones changed: their ids are fixed at validation time.
+const likeEscape = (v: string) => v.replace(/[\\%_]/g, (m) => `\\${m}`);
+const chunks = <T,>(a: T[], n = 100): T[][] => Array.from({ length: Math.ceil(a.length / n) }, (_, k) => a.slice(k * n, (k + 1) * n));
+const MAX_BULK = 500;
+
+async function validateBulk(c: Ctx, a: Json): Promise<Validated> {
+  let wsId: string | null = null, wsName = "";
+  if (a.workspace) { const r = resolveByName(a.workspace as string, c.workspaces); if ("error" in r) return { ok: false, error: r.error }; wsId = r.id; wsName = r.name; }
+  let q = c.supabase.from("tasks").select("id, title").is("deleted_at", null).limit(MAX_BULK + 1);
+  q = a.title_equals ? q.ilike("title", likeEscape(a.title_equals as string)) : q.ilike("title", `%${likeEscape(a.title_contains as string)}%`);
+  if (wsId) q = q.eq("workspace_id", wsId);
+  if (a.action !== "delete") q = q.in("status", OPEN);
+  const { data, error } = await q;
+  if (error) return { ok: false, error: error.message };
+  const rows = data ?? [];
+  if (!rows.length) return { ok: false, error: "No matching tasks were found." };
+  if (rows.length > MAX_BULK) return { ok: false, error: `More than ${MAX_BULK} tasks match. Narrow it down (add a workspace or a longer title).` };
+  const what = a.title_equals ? `titled “${a.title_equals}”` : `containing “${a.title_contains}”`;
+  const n = rows.length, noun = `${n} task${n === 1 ? "" : "s"}`;
+  const text = a.action === "delete" ? `DELETE ${noun} ${what}${wsName ? ` in ${wsName}` : ""} (and their subtasks). You can undo this.`
+    : a.action === "complete" ? `Mark ${noun} ${what}${wsName ? ` in ${wsName}` : ""} completed` : `Cancel ${noun} ${what}${wsName ? ` in ${wsName}` : ""}`;
+  return { ok: true, input: { action: a.action, ids: rows.map((r) => r.id), count: n, match: a.title_equals ?? a.title_contains }, preview: text };
+}
+
+async function validateUndo(c: Ctx): Promise<Validated> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data } = await c.supabase.from("ai_action_logs").select("id, tool_name, validated_input, affected_entity_ids, executed_at, result")
+    .eq("tool_kind", "write").eq("status", "executed").in("tool_name", ["delete_task", "bulk_tasks"]).gte("executed_at", since).order("executed_at", { ascending: false }).limit(20);
+  const hit = (data ?? []).find((l) => (l.tool_name === "delete_task" || (l.validated_input as Json | null)?.action === "delete") && !(l.result as Json | null)?.undone_at && (l.affected_entity_ids?.length ?? 0) > 0);
+  if (!hit) return { ok: false, error: "There is nothing recent to undo." };
+  // A "delete all nn tasks" done as several batches is undone batch by batch, newest first.
+  const n = hit.affected_entity_ids!.length;
+  return { ok: true, input: { log_id: hit.id, ids: hit.affected_entity_ids }, preview: `Restore ${n} deleted task${n === 1 ? "" : "s"}` };
+}
+
 export function preview(name: ToolName, i: Json, l: Record<string, string>, ws: string): string {
   const q = (s: unknown) => `“${s}”`;
   const t = l.task_id ? q(l.task_id) : "the task";
@@ -278,7 +317,9 @@ export function preview(name: ToolName, i: Json, l: Record<string, string>, ws: 
     case "complete_task": return `Mark ${t} completed`;
     case "reschedule_task": return `Move ${t} to ${i.new_deadline}${i.reason ? ` (${i.reason})` : ""}`;
     case "move_task": return `Move ${t} to ${ws}`;
-    case "delete_task": return `DELETE ${t} and its subtasks`;
+    case "delete_task": return `DELETE ${t} and its subtasks. You can undo this.`;
+    case "bulk_tasks": return "Change several tasks";
+    case "undo_last_delete": return "Restore the last deleted tasks";
     case "log_time": return `Log ${i.minutes} min on ${t}`;
     case "create_goal": return `Create goal ${q(i.name)}${w}${i.target_date ? `, target ${i.target_date}` : ""}`;
     case "add_milestone": return `Add milestone ${q(i.title)} to goal ${q(l.goal_id)}${i.target_value ? `, target ${i.target_value}${i.unit ? " " + i.unit : ""}` : ""}`;
@@ -304,6 +345,17 @@ export function preview(name: ToolName, i: Json, l: Record<string, string>, ws: 
 // ------------------------------------------------------------------ WRITE TOOLS: execute + verify
 export type Done = { type: string; ids: string[]; verified: boolean };
 const fail = (m?: string): never => { throw new Error(m ?? "Failed."); };
+// How many of these task ids currently satisfy a condition (counted in chunks, read back from the database).
+type Cond = { deleted: boolean } | { status: string };
+async function countWhere(db: SupabaseClient, ids: string[], cond: Cond): Promise<number> {
+  let total = 0;
+  for (const ch of chunks(ids)) {
+    const base = db.from("tasks").select("id", { count: "exact", head: true }).in("id", ch);
+    const { count } = "status" in cond ? await base.eq("status", cond.status) : cond.deleted ? await base.not("deleted_at", "is", null) : await base.is("deleted_at", null);
+    total += count ?? 0;
+  }
+  return total;
+}
 
 export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: string): Promise<Done> {
   const db = c.supabase;
@@ -342,9 +394,36 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
       return { type: "tasks", ids: [i.task_id as string], verified: await rowIs("tasks", i.task_id as string, { workspace_id: i.workspace_id }) };
     }
     case "delete_task": {
-      const { error } = await db.from("tasks").update({ deleted_at: new Date().toISOString() }).eq("id", i.task_id as string); if (error) fail(error.message);
-      const { data } = await db.from("tasks").select("deleted_at").eq("id", i.task_id as string).maybeSingle();
-      return { type: "tasks", ids: [i.task_id as string], verified: !!data?.deleted_at };
+      // Same behaviour as the Delete button in the app: the task and its whole subtree, soft-deleted (recoverable).
+      const { data: sub } = await db.rpc("get_task_subtree", { p_root: i.task_id });
+      const ids: string[] = ((sub ?? []) as { id: string }[]).map((r) => r.id);
+      if (!ids.length) fail("Task not found.");
+      const { error } = await db.from("tasks").update({ deleted_at: new Date().toISOString() }).in("id", ids); if (error) fail(error.message);
+      return { type: "tasks", ids, verified: (await countWhere(db, ids, { deleted: true })) === ids.length };
+    }
+    case "bulk_tasks": {
+      const picked = i.ids as string[];
+      if (i.action === "delete") {
+        const all = new Set(picked); let frontier = [...picked];
+        for (let depth = 0; depth < 25 && frontier.length; depth++) {
+          const next: string[] = [];
+          for (const ch of chunks(frontier)) { const { data } = await db.from("tasks").select("id").in("parent_task_id", ch).is("deleted_at", null); for (const r of data ?? []) if (!all.has(r.id)) { all.add(r.id); next.push(r.id); } }
+          frontier = next;
+        }
+        const ids = [...all], at = new Date().toISOString();
+        for (const ch of chunks(ids)) { const { error } = await db.from("tasks").update({ deleted_at: at }).in("id", ch).is("deleted_at", null); if (error) fail(error.message); }
+        return { type: "tasks", ids, verified: (await countWhere(db, ids, { deleted: true })) === ids.length };
+      }
+      const status = i.action === "complete" ? "completed" : "cancelled";
+      for (const ch of chunks(picked)) { const { error } = await db.from("tasks").update({ status }).in("id", ch).is("deleted_at", null); if (error) fail(error.message); }
+      return { type: "tasks", ids: picked, verified: (await countWhere(db, picked, { status })) === picked.length };
+    }
+    case "undo_last_delete": {
+      const ids = i.ids as string[];
+      for (const ch of chunks(ids)) { const { error } = await db.from("tasks").update({ deleted_at: null }).in("id", ch); if (error) fail(error.message); }
+      const verified = (await countWhere(db, ids, { deleted: false })) === ids.length;
+      if (verified) await db.from("ai_action_logs").update({ result: { ok: true, undone_at: new Date().toISOString() } }).eq("id", i.log_id as string);
+      return { type: "tasks", ids, verified };
     }
     case "log_time": {
       const { data: t } = await db.from("tasks").select("workspace_id").eq("id", i.task_id as string).maybeSingle(); if (!t) fail("Task not found.");

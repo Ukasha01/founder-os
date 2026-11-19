@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Vad } from "../../src/lib/vad.ts";
 import { downsample, floatToInt16, int16ToBytes, pcm16ToWav, rms } from "../../src/lib/wav.ts";
-import { classifyCommand } from "../../src/lib/voice-commands.ts";
+import { classifyCommand, classifyDecision } from "../../src/lib/voice-commands.ts";
 import { cleanTranscript, extractAudio, extractText, pcmRate, pickProvider, toPlayable } from "../../src/lib/ai/speech.ts";
 
 // Feed `ms` milliseconds of constant loudness in 20 ms blocks; return every event seen.
@@ -16,8 +16,8 @@ test("VAD: silence produces nothing; speech then a long pause ends the utterance
   const v = new Vad();
   assert.deepEqual(run(v, 0.003, 3000), []);
   assert.deepEqual(run(v, 0.1, 1000), ["start"]);
-  assert.deepEqual(run(v, 0.003, 800), []);           // a short thinking pause does NOT cut the speaker off
-  assert.deepEqual(run(v, 0.003, 400), ["end"]);      // 1.2 s of silence ends it
+  assert.deepEqual(run(v, 0.003, 700), []);           // a short thinking pause does NOT cut the speaker off
+  assert.deepEqual(run(v, 0.003, 300), ["end"]);      // 1 s of silence ends it
 });
 test("VAD: a pause mid-sentence followed by more speech keeps one utterance", () => {
   const v = new Vad();
@@ -28,7 +28,7 @@ test("VAD: a short click is ignored and a tiny blip is discarded", () => {
   const v = new Vad();
   assert.deepEqual(run(v, 0.2, 60), []);              // 60 ms click never starts speech
   assert.deepEqual(run(v, 0.003, 500), []);
-  const ev = [...run(v, 0.1, 160), ...run(v, 0.003, 1300)]; // 160 ms of sound: starts, but is too short to send
+  const ev = [...run(v, 0.1, 160), ...run(v, 0.003, 1100)]; // 160 ms of sound: starts, but is too short to send
   assert.deepEqual(ev, ["start", "discard"]);
 });
 test("VAD: adapts to a noisy room instead of firing constantly", () => {
@@ -115,7 +115,7 @@ test("tool routing: every read tool always, writes only for the topic mentioned"
   const reads = Object.entries(TOOLS).filter(([, t]) => t.kind === "read").map(([k]) => k);
   const a = routeTools("what is in my inbox");
   for (const r of reads) assert.ok(a.includes(r), r);
-  assert.ok(a.includes("create_task") && !a.includes("create_habit") && !a.includes("delete_task"));
+  assert.ok(a.includes("create_task") && !a.includes("create_habit") && a.includes("delete_task"));
   assert.ok(routeTools("Maine aaj 45 minute kaam kiya aur namaz padh li").includes("log_time"));
   assert.ok(routeTools("Maine aaj 45 minute kaam kiya aur namaz padh li").includes("log_habit"));
   assert.ok(routeTools("میری نماز لاگ کرو").includes("log_habit"));
@@ -164,4 +164,27 @@ test("speech-to-text provider order", () => {
   assert.deepEqual(sttOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q" }), ["gemini", "groq"]);
   assert.deepEqual(sttOrder({ GEMINI_API_KEY: "g", GROQ_API_KEY: "q", STT_PROVIDER: "groq" }), ["groq", "gemini"]);
   assert.deepEqual(sttOrder({ GROQ_API_KEY: "q", STT_PROVIDER: "gemini" }), ["groq"]);
+});
+
+import { composeReply } from "../../src/lib/ai/reply.ts";
+test("yes/no decisions: tolerant of fillers, strict about new requests", () => {
+  for (const s of ["yes haan", "haan ji", "ji kar do", "bilkul", "ہاں", "ہاں بھائی کر دو", "ok do it".replace("it", "kar"), "yes please"]) assert.equal(classifyDecision(s), "yes", s);
+  for (const s of ["nahi", "nahi nahi", "نہیں", "no", "mat karo", "cancel"]) assert.equal(classifyDecision(s), "no", s);
+  for (const s of ["kal ka task add kar do", "haan aur ek task banao", "do", "kar do", "what is on my list", ""]) assert.equal(classifyDecision(s), null, s);
+});
+test("non-speech hallucinations are dropped", () => {
+  for (const s of ["موسیقی", "Music", "[Music]", "♪", "Thank you for watching!", "شکریہ۔", "..."]) assert.equal(cleanTranscript(s), "", s);
+  assert.equal(cleanTranscript("موسیقی چلاؤ"), "موسیقی چلاؤ");
+});
+test("composeReply builds truthful, language-matched replies", () => {
+  const en = composeReply({ urdu: false, modelText: "ignored", done: [], waiting: ["DELETE 12 tasks titled “nn”"], errors: [] });
+  assert.match(en, /Say yes/); assert.ok(!en.includes("ignored"));
+  assert.match(composeReply({ urdu: true, modelText: "", done: ["a", "b", "c", "d"], waiting: [], errors: [] }), /ہو گیا.*2 مزید/);
+  assert.equal(composeReply({ urdu: false, modelText: "You have 3 tasks.", done: [], waiting: [], errors: [] }), "You have 3 tasks.");
+  assert.match(composeReply({ urdu: false, modelText: "", done: [], waiting: [], errors: ["x"], dropped: 3 }), /Could not do: x.*3 more/);
+  assert.match(composeReply({ urdu: false, modelText: "", done: [], waiting: [], errors: [], skipped: 2 }), /skipped/);
+});
+test("routing: typo and bulk phrasing still reach delete tools", () => {
+  assert.ok(routeTools("deelte all tasks").includes("bulk_tasks"));
+  assert.ok(routeTools("undo that").includes("undo_last_delete"));
 });

@@ -3,6 +3,8 @@ import { askLlm, type Msg, type ToolResult } from "./llm";
 import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } from "./tools";
 import { runRead, validateWrite, executeWrite, type Ctx } from "./registry";
 import { addDays, dateInTz, rangeUtc } from "../time";
+import { classifyDecision } from "../voice-commands";
+import { composeReply, isUrdu } from "./reply";
 
 // One assistant turn, shared by the typed form (redirect-based server action) and the live voice endpoint (JSON).
 export async function currentConversation(supabase: SupabaseClient): Promise<string> {
@@ -41,6 +43,33 @@ export async function runLog(c: Ctx, logId: string): Promise<boolean> {
   }
 }
 
+// "Yes" / "no" answers to a pending confirmation are handled here, before the model, so they are instant and always
+// consistent. Only actions proposed in the latest assistant message (within 10 minutes) are affected.
+async function handleDecision(c: Ctx, conversationId: string, decision: "yes" | "no", urdu: boolean): Promise<TurnResult | null> {
+  const { data: last } = await c.supabase.from("ai_messages").select("id, created_at").eq("conversation_id", conversationId).eq("role", "assistant").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!last || Date.now() - new Date(last.created_at).getTime() > 10 * 60_000) return null;
+  const { data: logs } = await c.supabase.from("ai_action_logs").select("id, preview").eq("message_id", last.id).eq("tool_kind", "write").eq("status", "awaiting_approval").order("created_at");
+  if (!logs?.length) return null;
+  const text = async (reply: string, extra: Partial<Extract<TurnResult, { ok: true }>>): Promise<TurnResult> => {
+    await c.supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "assistant", content: reply, model: "app" });
+    return { ok: true, reply, pending: 0, executed: 0, refused: 0, ...extra };
+  };
+  if (decision === "no") {
+    await c.supabase.from("ai_action_logs").update({ status: "rejected" }).in("id", logs.map((l) => l.id)).eq("status", "awaiting_approval");
+    return text(composeReply({ urdu, modelText: "", done: [], waiting: [], errors: [], skipped: logs.length }), {});
+  }
+  const done: string[] = [], errors: string[] = [];
+  for (const l of logs) {
+    const label = (l.preview as { text?: string } | null)?.text ?? "action";
+    if (await runLog(c, l.id)) done.push(label);
+    else {
+      const { data: row } = await c.supabase.from("ai_action_logs").select("error").eq("id", l.id).maybeSingle();
+      errors.push(`${label}${row?.error ? ` (${row.error})` : ""}`);
+    }
+  }
+  return text(composeReply({ urdu, modelText: "", done, waiting: [], errors }), { executed: done.length, refused: errors.length });
+}
+
 type Proposal = { name: string; args: Record<string, unknown> };
 export type TurnResult =
   | { ok: false; error: string }
@@ -63,6 +92,13 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const { data: userMsg, error: e1 } = await supabase.from("ai_messages")
     .insert({ conversation_id: conversationId, role: "user", content: message, input_mode: voice ? "voice" : "text" }).select("id").single();
   if (e1 || !userMsg) return { ok: false, error: e1?.message ?? "Could not save your message." };
+
+  const urdu = isUrdu(message);
+  const decision = classifyDecision(message);
+  if (decision) {
+    const handled = await handleDecision(c, conversationId, decision, urdu);
+    if (handled) return handled;
+  }
 
   const todayRange = rangeUtc(c.today, c.today, c.tz);
   const [{ data: tasks }, { data: past }, { data: st }, { data: inbox }, { data: events }, { data: meets }] = await Promise.all([
@@ -112,7 +148,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   }
   const { data: aMsg } = await supabase.from("ai_messages").insert({
     conversation_id: conversationId, role: "assistant", model,
-    content: finalText || (proposals.length ? "Here is what I would do:" : failure ?? "…"),
+    content: finalText || (proposals.length ? "…" : failure ?? "…"),
     tool_calls: proposals.length ? proposals : null,
   }).select("id").single();
 
@@ -122,6 +158,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   }
   const auto = !!st?.ai_auto_approve;
   let pending = 0, executed = 0, refused = 0;
+  const done: string[] = [], waiting: string[] = [], errors: string[] = [];
   for (const [i, x] of proposals.slice(0, 8).entries()) {
     const known = isToolName(x.name);
     const v = known ? await validateWrite(c, x.name as ToolName, x.args) : ({ ok: false, error: `Unknown action "${x.name}" was refused.` } as const);
@@ -131,9 +168,12 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
       proposed_input: x.args, validated_input: v.ok ? v.input : null, preview: v.ok ? { text: v.preview } : null,
       status: v.ok ? "awaiting_approval" : "failed", error: v.ok ? null : v.error, model, idempotency_key: `${aMsg?.id ?? userMsg.id}:${i}`,
     }).select("id").single();
-    if (!v.ok) { refused++; continue; }
-    if (auto && !confirm && row) { if (await runLog(c, row.id)) executed++; else refused++; } else pending++;
+    if (!v.ok) { refused++; errors.push(v.error); continue; }
+    if (auto && !confirm && row) { if (await runLog(c, row.id)) { executed++; done.push(v.preview); } else { refused++; errors.push(v.preview); } } else { pending++; waiting.push(v.preview); }
   }
   if (failure) await supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "system", content: failure });
-  return { ok: true, reply: aMsg ? (finalText || (proposals.length ? "Here is what I would do:" : "")) : finalText, pending, executed, refused, warning: failure ?? undefined };
+  // When changes were proposed or made, the reply is built from what really happened, not from the model's wording.
+  const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - 8) });
+  if (aMsg && proposals.length) await supabase.from("ai_messages").update({ content: reply }).eq("id", aMsg.id);
+  return { ok: true, reply, pending, executed, refused, warning: failure ?? undefined };
 }

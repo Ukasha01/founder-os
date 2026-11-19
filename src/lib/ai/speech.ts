@@ -11,12 +11,18 @@ export const STT_PROMPT =
   "Write Urdu words in Urdu script and English words in English letters. Keep numbers, names and task names as spoken. " +
   "Output ONLY the transcript, with no commentary, quotes or translation. If there is no clear human speech, output nothing at all.";
 
-// Models sometimes answer "[silence]" or "(no speech)" instead of nothing. Treat those as empty.
+// Models sometimes "transcribe" background sound instead of speech: "[silence]", "موسیقی" (music), "Thank you for watching".
+// Those must never reach the assistant, or it answers sounds that were not words.
+const NON_SPEECH = new Set(["موسیقی", "میوزک", "music", "noise", "silence", "inaudible", "applause", "laughter", "تالیاں", "تالی", "شور", "خاموشی", "ہنسی", "♪", "♪♪", "..."]);
+const HALLUCINATIONS = [/^thanks? for watching/i, /^thank you for watching/i, /^subtitles? by/i, /^please subscribe/i, /^like and subscribe/i, /^شکریہ[۔.!\s]*$/, /^دیکھنے کے لیے شکریہ/, /^ترجمہ/, /^اسے دیکھنے کے لیے/];
 export function cleanTranscript(raw: string): string {
   const t = raw.trim().replace(/^["“]|["”]$/g, "").trim();
   if (!t) return "";
   if (/^[\[(（].*[\])）]$/.test(t)) return "";
+  const bare = t.replace(/[.,!?؟۔،\s♪*_-]+/g, " ").trim().toLowerCase();
+  if (!bare || NON_SPEECH.has(bare)) return "";
   if (/^(no (clear )?(human )?speech|silence|inaudible|nothing)\b/i.test(t) && t.length < 40) return "";
+  if (HALLUCINATIONS.some((r) => r.test(t))) return "";
   return t;
 }
 

@@ -24,3 +24,17 @@ export function classifyCommand(text: string): Command {
   for (const [name, set] of SETS) if (set.has(t)) return name;
   return null;
 }
+
+// A spoken or typed answer to "do you confirm?". Word by word, so "yes haan", "haan kar do", "ہاں بھائی کر دو" all count,
+// while any sentence that contains other words (a new request) does not.
+const YES_WORDS = new Set(["haan", "han", "ha", "haanji", "ji", "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "kar", "do", "dein", "den", "kardo", "karo", "theek", "thik", "hai", "bilkul", "zaroor", "zarur", "approve", "confirm", "confirmed", "done", "please", "go", "ahead", "bhai", "yar", "yaar", "delete", "sab", "sare", "saray",
+  "ہاں", "ہاں،", "جی", "کر", "دو", "کریں", "کردو", "ٹھیک", "ہے", "بالکل", "ضرور", "اوکے", "بھائی", "یار", "ڈیلیٹ", "سب", "سارے"]);
+const YES_STRONG = new Set(["haan", "han", "ha", "haanji", "ji", "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "theek", "thik", "bilkul", "zaroor", "zarur", "approve", "confirm", "confirmed", "kardo", "ہاں", "جی", "ٹھیک", "بالکل", "ضرور", "اوکے", "کردو"]);
+const NO_WORDS = new Set(["nahi", "nahin", "nai", "na", "no", "nope", "mat", "skip", "cancel", "rehne", "rahne", "chhor", "chor", "chhordo", "choro", "ruk", "stop", "dont", "don't", "nahi", "نہیں", "نہ", "مت", "رہنے", "چھوڑ", "چھوڑو", "رک", "کینسل"]);
+
+export function classifyDecision(text: string): "yes" | "no" | null {
+  const words = norm(text).split(" ").filter(Boolean);
+  if (!words.length || words.length > 6) return null;
+  if (words.some((w) => NO_WORDS.has(w))) return words.every((w) => NO_WORDS.has(w) || YES_WORDS.has(w)) ? "no" : null;
+  return words.every((w) => YES_WORDS.has(w)) && words.some((w) => YES_STRONG.has(w)) ? "yes" : null;
+}

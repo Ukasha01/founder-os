@@ -66,3 +66,9 @@ Gemini's free allowance is small and its answers are slower. Add a free Groq key
 3. Optional: a second free fast provider, `CEREBRAS_API_KEY` from cloud.cerebras.ai.
 
 What the voice assistant can read now: tasks (with notes, subtasks, comments, history), Inbox, calendar events, meetings, time logged, daily reviews, recurring rules, goals, habits, KPIs, people, commitments, performance, and a search across all of them. It can change things only through the approval flow.
+
+## Deleting many tasks, and undo
+- Say "delete all tasks named nn" (English, Roman Urdu or Urdu). The assistant makes one confirmation: "DELETE N tasks titled “nn” (and their subtasks)". Reply "yes" / "haan" / "ہاں" to confirm, or "no" / "نہیں" to skip. Your answer is handled by the app itself, so it is instant and consistent.
+- Deleting is a soft delete, and "undo" / "undo that delete" restores the latest delete within 7 days.
+- Bulk actions: delete, complete or cancel, matched by title (exact or contains) and optionally a workspace; maximum 500 tasks per request.
+- The assistant's replies about changes are built from what the app actually did, so they cannot claim something that did not happen.

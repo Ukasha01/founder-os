@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
       <CaptureButton workspaces={workspaces.map((w) => ({ id: w.id, name: w.name }))} />
       <SyncManager />
-      <LiveAssistant enabled={!!process.env.GEMINI_API_KEY} />
+      <LiveAssistant enabled={!!(process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY)} />
     </div>
   );
 }
