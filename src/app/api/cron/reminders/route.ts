@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planReminders, nextStatus, type Draft } from "@/lib/reminders";
-import { dateInTz } from "@/lib/time";
+import { dateInTz, zonedToUtc } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,15 +38,22 @@ export async function GET(req: NextRequest) {
   for (const u of users ?? []) {
     const today = dateInTz(now, u.timezone ?? "Asia/Karachi");
     const open = ["not_started", "in_progress", "waiting"];
-    const [{ data: dueToday }, { data: overdue }, { data: meetings }, { data: commitments }] = await Promise.all([
+    const winFrom = new Date(now.getTime() - 11 * 60000).toISOString(), winTo = new Date(now.getTime() + 11 * 60000).toISOString();
+    const tz = u.timezone ?? "Asia/Karachi";
+    const [{ data: dueToday }, { data: overdue }, { data: meetings }, { data: commitments }, { data: events }, { data: timed }] = await Promise.all([
       db.from("tasks").select("id, title").eq("owner_id", u.owner_id).is("deleted_at", null).in("status", open).eq("current_deadline", today).limit(50),
       db.from("tasks").select("id, title, current_deadline").eq("owner_id", u.owner_id).is("deleted_at", null).in("status", open).lt("current_deadline", today).limit(50),
       db.from("meetings").select("id, title, starts_at").eq("owner_id", u.owner_id).is("deleted_at", null).eq("status", "scheduled")
-        .gte("starts_at", now.toISOString()).lte("starts_at", new Date(now.getTime() + 3600000).toISOString()).limit(20),
+        .gte("starts_at", winFrom).lte("starts_at", winTo).limit(20),
       db.from("commitments").select("id, description, due_date, follow_up_date").eq("owner_id", u.owner_id).is("deleted_at", null).in("status", ["pending", "in_progress"])
         .or(`due_date.lte.${today},follow_up_date.lte.${today}`).limit(30),
+      db.from("calendar_events").select("id, title, start_at, location").eq("owner_id", u.owner_id).is("deleted_at", null).neq("status", "cancelled").eq("all_day", false)
+        .gte("start_at", winFrom).lte("start_at", winTo).limit(30),
+      db.from("tasks").select("id, title, due_time").eq("owner_id", u.owner_id).is("deleted_at", null).in("status", open).eq("current_deadline", today).not("due_time", "is", null).limit(30),
     ]);
-    const drafts: Draft[] = planReminders({ now, today, dueToday: dueToday ?? [], overdue: (overdue ?? []) as never, meetingsSoon: meetings ?? [], commitments: commitments ?? [] });
+    const drafts: Draft[] = planReminders({ now, today, dueToday: dueToday ?? [], overdue: (overdue ?? []) as never, meetingsSoon: meetings ?? [], commitments: commitments ?? [],
+      events: (events ?? []).map((e) => ({ id: e.id, title: e.title, starts_at: e.start_at, location: e.location })),
+      timedTasks: (timed ?? []).map((t) => ({ id: t.id, title: t.title, due_at: zonedToUtc(`${today}T${String(t.due_time).slice(0, 5)}`, tz).toISOString() })) });
     for (const d of drafts) {
       const { error } = await db.from("reminders").insert({ owner_id: u.owner_id, ...d, channels: pushOn ? ["in_app", "push"] : ["in_app"] });
       if (!error) stats.created++;
@@ -55,10 +62,10 @@ export async function GET(req: NextRequest) {
   }
 
   // 2) Deliver: everything pending and due.
-  const { data: due } = await db.from("reminders").select("id, owner_id, title, body, kind, channels, attempts, task_id, meeting_id, commitment_id")
+  const { data: due } = await db.from("reminders").select("id, owner_id, title, body, kind, channels, attempts, task_id, meeting_id, commitment_id, event_id")
     .eq("status", "pending").lte("remind_at", now.toISOString()).order("remind_at").limit(100);
   for (const r of due ?? []) {
-    const link = r.meeting_id ? `/meetings/${r.meeting_id}` : r.task_id ? `/tasks/${r.task_id}` : r.commitment_id ? "/commitments" : "/";
+    const link = r.meeting_id ? `/meetings/${r.meeting_id}` : r.event_id ? "/calendar" : r.task_id ? `/tasks/${r.task_id}` : r.commitment_id ? "/commitments" : "/";
     let delivered = false, lastError: string | null = null;
     const { data: existing } = await db.from("notifications").select("id").eq("reminder_id", r.id).maybeSingle();
     if (existing) delivered = true;
@@ -70,7 +77,7 @@ export async function GET(req: NextRequest) {
       const { data: subs } = await db.from("push_subscriptions").select("id, endpoint, p256dh, auth_secret").eq("owner_id", r.owner_id);
       for (const s of subs ?? []) {
         try {
-          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_secret } }, JSON.stringify({ title: r.title, body: r.body ?? "", url: link }), { TTL: 3600 });
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_secret } }, JSON.stringify({ title: r.title, body: r.body ?? "", url: link }), { TTL: 900, urgency: "high" });
           stats.push_sent++;
           await db.from("push_subscriptions").update({ last_used_at: now.toISOString() }).eq("id", s.id);
         } catch (e) {
