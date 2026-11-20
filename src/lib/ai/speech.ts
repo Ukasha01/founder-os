@@ -13,7 +13,7 @@ export const STT_PROMPT =
 
 // Models sometimes "transcribe" background sound instead of speech: "[silence]", "موسیقی" (music), "Thank you for watching".
 // Those must never reach the assistant, or it answers sounds that were not words.
-const NON_SPEECH = new Set(["موسیقی", "میوزک", "music", "noise", "silence", "inaudible", "applause", "laughter", "تالیاں", "تالی", "شور", "خاموشی", "ہنسی", "بولا گیا ہے", "♪", "♪♪", "..."]);
+const NON_SPEECH = new Set(["موسیقی", "میوزک", "music", "noise", "silence", "inaudible", "applause", "laughter", "تالیاں", "تالی", "شور", "خاموشی", "ہنسی", "بولا گیا ہے", "thank you", "thanks", "you", "so", "bye", "oh", "uh", "um", "hmm", "tchau", "obrigado", "gracias", "merci", "thank you for watching", "♪", "♪♪", "..."]);
 const HALLUCINATIONS = [/^thanks? for watching/i, /^thank you for watching/i, /^subtitles? by/i, /^please subscribe/i, /^like and subscribe/i, /^شکریہ[۔.!\s]*$/, /^دیکھنے کے لیے شکریہ/, /^ترجمہ/, /^اسے دیکھنے کے لیے/];
 export function cleanTranscript(raw: string): string {
   const t = raw.trim().replace(/^["“]|["”]$/g, "").trim();

@@ -200,3 +200,23 @@ test("Hindi-script transcripts are detected so they can be redone as Urdu", () =
   assert.equal(hasDevanagari("یار مجھے یہ بتاؤ"), false);
   assert.equal(hasDevanagari("Is there any event"), false);
 });
+
+import { detectLang, isEcho, languageDirective } from "../../src/lib/ai/lang.ts";
+test("language is chosen from the user's words", () => {
+  assert.equal(detectLang("Thank you."), "en");
+  assert.equal(detectLang("Please tell me the performance of last week"), "en");
+  assert.equal(detectLang("mujhe kal ka task bata do"), "ur");
+  assert.equal(detectLang("آج کا شیڈول بتاؤ"), "ur");
+  assert.equal(detectLang("Is there any event in our calendar?"), "en");
+  assert.match(languageDirective("en"), /English only/);
+});
+test("the assistant's own voice is recognised as an echo", () => {
+  assert.equal(isEcho("You're welcome. You're welcome.", "You’re welcome!"), true);
+  assert.equal(isEcho("Add a task to call the courier tomorrow", "You have 3 tasks today."), false);
+  assert.equal(isEcho("anything", ""), false);
+});
+test("filler phrases that speech recognition invents on silence are dropped, but yes/ok still work", () => {
+  for (const s of ["Thank you.", "you", "So", "Tchau.", "Bye."]) assert.equal(cleanTranscript(s), "", s);
+  assert.equal(cleanTranscript("okay"), "okay");
+  assert.equal(cleanTranscript("thank you for the report, add it to my inbox"), "thank you for the report, add it to my inbox");
+});

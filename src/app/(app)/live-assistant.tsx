@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Vad } from "@/lib/vad";
 import { downsample, floatToInt16, int16ToBytes, pcm16ToWav, rms } from "@/lib/wav";
+import { isEcho } from "@/lib/ai/lang";
 import { classifyCommand } from "@/lib/voice-commands";
 import { MESSAGES, classifyMicProbe, micPermissionState, permissionsPolicyAllowsMic } from "@/lib/voice";
 
@@ -31,7 +32,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     running: false, ctx: null as AudioContext | null, stream: null as MediaStream | null, node: null as AudioWorkletNode | null,
     vad: new Vad(), preroll: [] as Float32Array[], prerollLen: 0, chunks: [] as Float32Array[], inUtt: false, calibrating: 0,
     ui: "off" as Ui, epoch: 0, speakToken: 0, source: null as AudioBufferSourceNode | null, abort: null as AbortController | null,
-    lastText: "", lastAt: 0, duringSpeech: false, candLen: 0, lastLevel: 0, noUrduVoiceWarned: false,
+    lastText: "", lastAt: 0, duringSpeech: false, candLen: 0, lastReply: "", speakEndedAt: 0, lastLevel: 0, noUrduVoiceWarned: false,
   });
   const set = useCallback((u: Ui) => { S.current.ui = u; setUi(u); }, []);
 
@@ -112,7 +113,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
         }
       }
     }
-    if (token === s.speakToken) { s.abort = null; if (s.running) set("listening"); }
+    if (token === s.speakToken) { s.abort = null; s.speakEndedAt = Date.now(); if (s.running) set("listening"); }
   }, [findVoice, localSpeak, playBuffer, set, stopSpeaking]);
 
   const handleUtterance = useCallback(async (wav: Uint8Array) => {
@@ -136,6 +137,8 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     if (text === s.lastText && now - s.lastAt < 8000) return set("listening");
     s.lastText = text; s.lastAt = now;
 
+    // The mic can hear the assistant's own voice (laptop speakers). What it just said is never treated as a new request.
+    if (Date.now() - s.speakEndedAt < 15000 && isEcho(text, s.lastReply)) return set("listening");
     if (classifyCommand(text) === "stop") { stopSpeaking(); return set("listening"); }
 
     set("thinking");
@@ -145,7 +148,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
       router.refresh();
       if (!j.ok) { setNotice(j.error ?? "The assistant could not answer."); return set("listening"); }
       const out = j.reply ?? "";
-      setReply(out);
+      setReply(out); s.lastReply = out;
       if (stale() || !out) return set("listening");   // you started talking again while I was thinking: do not talk over you
       await speak(out);
     } catch { setNotice("Could not reach the assistant. Check your connection."); set("listening"); }
@@ -168,6 +171,8 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     if (s.calibrating > 0) { s.vad.calibrate(level); s.calibrating -= dt; return; }
     const now = performance.now();
     if (now - s.lastLevel > 100) { s.lastLevel = now; setLevel(Math.min(1, level * 8)); }
+    // The room still rings for a moment after the speakers stop: ignore the mic briefly so the tail is not heard as speech.
+    if (s.ui === "listening" && Date.now() - s.speakEndedAt < 900) { s.vad.reset(); s.preroll = []; s.prerollLen = 0; return; }
     const ds = downsample(block, rate, RATE);
     if (s.inUtt) {
       s.chunks.push(ds);
