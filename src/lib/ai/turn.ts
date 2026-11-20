@@ -5,7 +5,7 @@ import { runRead, validateWrite, executeWrite, type Ctx } from "./registry";
 import { addDays, dateInTz, rangeUtc } from "../time";
 import { classifyDecision } from "../voice-commands";
 import { composeReply, localize } from "./reply";
-import { detectLang, languageDirective } from "./lang";
+import { detectLang, isEcho, languageDirective } from "./lang";
 
 // One assistant turn, shared by the typed form (redirect-based server action) and the live voice endpoint (JSON).
 export async function currentConversation(supabase: SupabaseClient): Promise<string> {
@@ -90,6 +90,12 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   if ((count ?? 0) >= cap) return { ok: false, error: `Daily assistant limit reached (${cap}). Use the Inbox for notes; it resets tomorrow.` };
 
   const conversationId = await currentConversation(supabase);
+  // Voice: if this is just the assistant's own last reply coming back through the microphone, drop it before anything
+  // happens (it must never become a request, and it must never be able to answer "yes" to its own confirmation).
+  if (voice) {
+    const { data: lastA } = await supabase.from("ai_messages").select("content, created_at").eq("conversation_id", conversationId).eq("role", "assistant").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (lastA?.content && Date.now() - new Date(lastA.created_at).getTime() < 90_000 && !classifyDecision(message) && isEcho(message, lastA.content)) return { ok: true, reply: "", pending: 0, executed: 0, refused: 0 };
+  }
   const { data: userMsg, error: e1 } = await supabase.from("ai_messages")
     .insert({ conversation_id: conversationId, role: "user", content: message, input_mode: voice ? "voice" : "text" }).select("id").single();
   if (e1 || !userMsg) return { ok: false, error: e1?.message ?? "Could not save your message." };

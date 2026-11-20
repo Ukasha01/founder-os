@@ -21,6 +21,7 @@ export const languageDirective = (l: Lang) => l === "ur"
 const toks = (s: string) => s.toLowerCase().normalize("NFKC").replace(/[’‘]/g, "'").replace(/[.,!?؟۔،;:'"“”()\-]/g, " ").split(/\s+/).filter(Boolean);
 export function isEcho(heard: string, lastReply: string): boolean {
   const h = toks(heard), r = new Set(toks(lastReply));
-  if (!h.length || h.length > 12 || !r.size) return false;
+  // Needs 3+ words: a bare "yes" / "haan" can appear in the assistant's own prompt and must still count as your answer.
+  if (h.length < 3 || h.length > 12 || !r.size) return false;
   return h.filter((w) => r.has(w)).length / h.length >= 0.7;
 }

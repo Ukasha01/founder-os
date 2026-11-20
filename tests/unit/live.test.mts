@@ -220,3 +220,7 @@ test("filler phrases that speech recognition invents on silence are dropped, but
   assert.equal(cleanTranscript("okay"), "okay");
   assert.equal(cleanTranscript("thank you for the report, add it to my inbox"), "thank you for the report, add it to my inbox");
 });
+test("a short yes is never mistaken for echo, but a repeated sentence is", () => {
+  assert.equal(isEcho("yes", "DELETE 7 tasks. Say yes to confirm, or no to skip."), false);
+  assert.equal(isEcho("Let me know which of these, or both, you'd like to delete.", "Which task to remove? Let me know which of these, or both, you'd like to delete."), true);
+});
