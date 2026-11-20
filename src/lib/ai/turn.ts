@@ -130,7 +130,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const readLog: { tool_name: string; input: Record<string, unknown> }[] = [];
   let finalText = "", model = "", failure: string | null = null;
   for (let round = 0; round < 4; round++) {
-    const r = await askLlm(msgs, context, { voice, userText: message });
+    const r = await askLlm(msgs, context, { voice, userText: message, urdu });
     if (!r.ok) { failure = r.message; break; }
     model = `${r.provider}:${r.model}`;
     const reads = r.calls.filter((x) => isToolName(x.name) && isRead(x.name));

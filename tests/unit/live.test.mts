@@ -231,3 +231,10 @@ test("unsure speech segments are dropped; foreign-script guesses are dropped", (
   assert.equal(cleanTranscript("야, 만나서 너 좀 쳐보죠."), "");
   assert.equal(cleanTranscript("Привет"), "");
 });
+test("Urdu turns prefer Gemini; English prefers the fast provider; explicit choice wins", () => {
+  const env = { GEMINI_API_KEY: "g", GROQ_API_KEY: "q" };
+  assert.deepEqual(providerOrder(env, true), ["gemini", "groq"]);
+  assert.deepEqual(providerOrder(env, false), ["groq", "gemini"]);
+  assert.deepEqual(providerOrder({ ...env, LLM_PROVIDER: "groq" }, true), ["groq", "gemini"]);
+  assert.deepEqual(providerOrder({ GROQ_API_KEY: "q" }, true), ["groq"]);
+});

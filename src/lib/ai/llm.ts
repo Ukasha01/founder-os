@@ -15,7 +15,7 @@ export type LlmResult =
   | { ok: true; text: string; calls: ToolCall[]; raw?: unknown; model: string; provider: string }
   | { ok: false; reason: "not_configured" | "quota" | "unavailable" | "bad_response"; message: string };
 
-export type LlmOpts = { voice: boolean; userText: string };
+export type LlmOpts = { voice: boolean; userText: string; urdu?: boolean };
 
 type Compat = { name: string; base: string; key: string; model: string };
 
@@ -27,10 +27,15 @@ export function compatProviders(env: Record<string, string | undefined>): Compat
 }
 
 // Order in which providers are tried. LLM_PROVIDER ("groq" | "cerebras" | "gemini") moves one to the front.
-export function providerOrder(env: Record<string, string | undefined>): string[] {
+// Fast providers first, Gemini as the fallback. Exception: Urdu turns go to Gemini first, because in your own logs the
+// Urdu from Gemini 2.5 Flash was fluent while gpt-oss-120b mistranslated names ("Wapsi" became "واپس") and mixed scripts.
+// An explicit LLM_PROVIDER always wins.
+export function providerOrder(env: Record<string, string | undefined>, urdu = false): string[] {
   const all = [...compatProviders(env).map((p) => p.name), ...(env.GEMINI_API_KEY ? ["gemini"] : [])];
   const first = (env.LLM_PROVIDER ?? "").toLowerCase();
-  return all.includes(first) ? [first, ...all.filter((x) => x !== first)] : all;
+  if (all.includes(first)) return [first, ...all.filter((x) => x !== first)];
+  if (urdu && all.includes("gemini") && !(env.LLM_URDU_PROVIDER === "fast")) return ["gemini", ...all.filter((x) => x !== "gemini")];
+  return all;
 }
 
 const lower = (v: unknown): unknown => Array.isArray(v) ? v.map(lower) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === "type" && typeof x === "string" ? x.toLowerCase() : lower(x)])) : v;
@@ -91,7 +96,7 @@ async function askCompat(p: Compat, msgs: Msg[], context: string, o: LlmOpts): P
 
 export async function askLlm(msgs: Msg[], context: string, o: LlmOpts): Promise<LlmResult> {
   const env = process.env;
-  const order = providerOrder(env);
+  const order = providerOrder(env, !!o.urdu);
   if (!order.length) return { ok: false, reason: "not_configured", message: "The assistant has no AI key yet. Add GEMINI_API_KEY (or GROQ_API_KEY) in Vercel to switch it on." };
   const compat = new Map(compatProviders(env).map((p) => [p.name, p]));
   let last: LlmResult | null = null;
