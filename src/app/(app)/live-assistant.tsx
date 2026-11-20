@@ -113,7 +113,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
         try { await playBuffer(await cur, token); }
         catch (e) {
           const why = e instanceof Error ? e.message : "";
-          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? `اس ڈیوائس میں اردو آواز نہیں ہے اور سرور کی آواز بھی نہیں چلی (${why})۔ جواب لکھا ہوا دکھایا جا رہا ہے۔` : `Voice is unavailable (${why}); showing text only.`); }
+          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? (/limit/i.test(why) ? "سرور کی مفت آواز کی روزانہ حد ختم ہو گئی ہے اور اس براؤزر میں اردو آواز نہیں ہے۔ جواب لکھا ہوا دکھایا جا رہا ہے۔ Microsoft Edge میں ایپ کھولیں تو اردو آواز مل سکتی ہے۔" : `اس براؤزر میں اردو آواز نہیں ہے اور سرور کی آواز بھی نہیں چلی (${why})۔ Microsoft Edge میں ایپ کھول کر دیکھیں۔`) : `Voice is unavailable (${why}); showing text only.`); }
           break;
         }
       }

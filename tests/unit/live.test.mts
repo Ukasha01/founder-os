@@ -166,7 +166,7 @@ test("speech-to-text provider order", () => {
   assert.deepEqual(sttOrder({ GROQ_API_KEY: "q", STT_PROVIDER: "gemini" }), ["groq"]);
 });
 
-import { composeReply, localize } from "../../src/lib/ai/reply.ts";
+import { composeReply, localize, stripMarkdown } from "../../src/lib/ai/reply.ts";
 test("yes/no decisions: tolerant of fillers, strict about new requests", () => {
   for (const s of ["yes haan", "haan ji", "ji kar do", "bilkul", "ہاں", "ہاں بھائی کر دو", "ok do it".replace("it", "kar"), "yes please"]) assert.equal(classifyDecision(s), "yes", s);
   for (const s of ["nahi", "nahi nahi", "نہیں", "no", "mat karo", "cancel"]) assert.equal(classifyDecision(s), "no", s);
@@ -237,4 +237,8 @@ test("Urdu turns prefer Gemini; English prefers the fast provider; explicit choi
   assert.deepEqual(providerOrder(env, false), ["groq", "gemini"]);
   assert.deepEqual(providerOrder({ ...env, LLM_PROVIDER: "groq" }, true), ["groq", "gemini"]);
   assert.deepEqual(providerOrder({ GROQ_API_KEY: "q" }, true), ["groq"]);
+});
+test("markdown symbols are removed from replies", () => {
+  assert.equal(stripMarkdown("* **Wapsi** میں: * Email Nazir"), "- Wapsi میں:\n- Email Nazir");
+  assert.equal(composeReply({ urdu: false, modelText: "**Done** `x`", done: [], waiting: [], errors: [] }), "Done x");
 });

@@ -1,5 +1,7 @@
 // What the assistant says about changes comes from what the app actually did or is about to do (the previews),
 // not from the model's wording. That keeps replies truthful and consistent, and removes English leftovers.
+// Replies are plain text (the app does not render Markdown), so stray *, ** and # would be shown, and read aloud as symbols.
+export const stripMarkdown = (t: string) => t.replace(/```[\s\S]*?```/g, " ").replace(/\*\*|__|`/g, "").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/^\s*[*•]\s+/gm, "- ").replace(/\*(?=\S)([^*\n]+)\*/g, "$1").replace(/\s\*\s+(?=\S)/g, "\n- ").replace(/[ \t]+\n/g, "\n").trim();
 export const isUrdu = (t: string) => /[؀-ۿ]/.test(t);
 
 const summarise = (items: string[], urdu: boolean) => {
@@ -37,5 +39,5 @@ export function composeReply(o: ReplyInput): string {
   if (o.dropped && o.dropped > 0) parts.push(urdu ? `${o.dropped} مزید کام چھوڑ دیے گئے، دوبارہ کہیں۔` : `${o.dropped} more were left out; ask again for those.`);
   if (o.skipped) parts.push(urdu ? "ٹھیک ہے، چھوڑ دیا۔" : "Okay, skipped.");
   if (parts.length) return parts.join(" ");
-  return o.modelText.trim();   // a plain answer or a question: the model's own words
+  return stripMarkdown(o.modelText);   // a plain answer or a question: the model's own words
 }
