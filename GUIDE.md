@@ -72,3 +72,8 @@ What the voice assistant can read now: tasks (with notes, subtasks, comments, hi
 - Deleting is a soft delete, and "undo" / "undo that delete" restores the latest delete within 7 days.
 - Bulk actions: delete, complete or cancel, matched by title (exact or contains) and optionally a workspace; maximum 500 tasks per request.
 - The assistant's replies about changes are built from what the app actually did, so they cannot claim something that did not happen.
+
+## Voice and echo (important)
+- While the assistant is speaking, the microphone is not listened to. This is deliberate: it makes it impossible for the assistant to hear its own voice (a problem on laptop speakers). Use the **Stop** button to interrupt. It listens again about a second after it finishes.
+- "Voice interrupt" (button next to the mic) lets you say "ruk jao" while it talks. Turn it on only with a headset.
+- Speech recognition drops sounds it is unsure about, and ignores Korean/Chinese/Russian guesses, instead of passing guesses to the assistant.

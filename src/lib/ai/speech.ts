@@ -19,6 +19,8 @@ export function cleanTranscript(raw: string): string {
   const t = raw.trim().replace(/^["“]|["”]$/g, "").trim();
   if (!t) return "";
   if (/^[\[(（].*[\])）]$/.test(t)) return "";
+  // Korean, Chinese, Japanese, Cyrillic, Thai: never what this user speaks, so it is a recognition error ("야, 만나서 너 좀 쳐보죠").
+  if (/[\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0E00-\u0E7F]/.test(t)) return "";
   const bare = t.replace(/[.,!?؟۔،\s♪*_-]+/g, " ").trim().toLowerCase();
   if (!bare || NON_SPEECH.has(bare)) return "";
   if (/^(no (clear )?(human )?speech|silence|inaudible|nothing)\b/i.test(t) && t.length < 40) return "";
@@ -83,12 +85,21 @@ async function groqOnce(key: string, wav: Uint8Array, language?: string): Promis
   form.append("file", new Blob([wav as BlobPart], { type: "audio/wav" }), "speech.wav");
   form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
   form.append("temperature", "0");
+  form.append("response_format", "verbose_json");
   if (language) form.append("language", language);
   return fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(20000) });
 }
 // Whisper's language guess is right for English but often calls spoken Urdu "Hindi" and writes Devanagari. So: detect the
 // language first (keeps English as English); if the result comes back in Devanagari, run it again pinned to Urdu.
 // (A pinned Urdu run is NOT the default: it turns English sentences into Urdu-script gibberish. STT_LANGUAGE overrides both.)
+// Whisper reports, per segment, how likely it was silence and how confident it was. Sounds it is unsure about are dropped
+// instead of being guessed into words (that guessing produced "you", "so", and random Korean).
+type Seg = { text?: string; no_speech_prob?: number; avg_logprob?: number };
+export function confidentText(body: { text?: string; segments?: Seg[] }): string {
+  const segs = body.segments;
+  if (!segs?.length) return String(body.text ?? "");
+  return segs.filter((g) => (g.no_speech_prob ?? 0) < 0.6 && (g.avg_logprob ?? 0) > -1.0).map((g) => g.text ?? "").join(" ").trim();
+}
 export const hasDevanagari = (t: string) => /[\u0900-\u097F]/.test(t);
 async function sttGroq(wav: Uint8Array): Promise<SttResult> {
   const key = process.env.GROQ_API_KEY;
@@ -97,10 +108,10 @@ async function sttGroq(wav: Uint8Array): Promise<SttResult> {
     let res = await groqOnce(key, wav, process.env.STT_LANGUAGE || undefined);
     if (res.status === 429) return { ok: false, reason: "quota", message: "Groq's free limit is reached for now." };
     if (!res.ok) return { ok: false, reason: "unavailable", message: `Groq speech recognition is unavailable (HTTP ${res.status}).` };
-    let text = cleanTranscript(String(((await res.json()) as { text?: string }).text ?? ""));
+    let text = cleanTranscript(confidentText((await res.json()) as { text?: string; segments?: Seg[] }));
     if (!process.env.STT_LANGUAGE && hasDevanagari(text)) {
       res = await groqOnce(key, wav, "ur");
-      if (res.ok) text = cleanTranscript(String(((await res.json()) as { text?: string }).text ?? ""));
+      if (res.ok) text = cleanTranscript(confidentText((await res.json()) as { text?: string; segments?: Seg[] }));
     }
     return { ok: true, text };
   } catch {

@@ -26,6 +26,11 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
   const [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
   const [level, setLevel] = useState(0);
+  const [barge, setBarge] = useState(false);
+  const bargeRef = useRef(false);
+  // Read the saved choice once after mount (localStorage does not exist during server rendering).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { const v = store.get("fos-live-barge") === "1"; bargeRef.current = v; setBarge(v); }, []);
 
   // Everything that changes many times a second lives in one mutable object, not React state.
   const S = useRef({
@@ -171,8 +176,11 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     if (s.calibrating > 0) { s.vad.calibrate(level); s.calibrating -= dt; return; }
     const now = performance.now();
     if (now - s.lastLevel > 100) { s.lastLevel = now; setLevel(Math.min(1, level * 8)); }
+    // Half-duplex (the permanent fix for echo): while the assistant is talking the microphone is simply not listened to,
+    // so its own voice can never become a request. Use the Stop button to interrupt. Voice interrupt is an opt-in for headsets.
+    if (s.ui === "speaking" && !bargeRef.current) { s.vad.reset(); s.inUtt = false; s.duringSpeech = false; s.chunks = []; s.preroll = []; s.prerollLen = 0; return; }
     // The room still rings for a moment after the speakers stop: ignore the mic briefly so the tail is not heard as speech.
-    if (s.ui === "listening" && Date.now() - s.speakEndedAt < 900) { s.vad.reset(); s.preroll = []; s.prerollLen = 0; return; }
+    if (s.ui === "listening" && Date.now() - s.speakEndedAt < 1200) { s.vad.reset(); s.preroll = []; s.prerollLen = 0; return; }
     const ds = downsample(block, rate, RATE);
     if (s.inUtt) {
       s.chunks.push(ds);
@@ -276,6 +284,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
         </div>
       )}
       <div className="flex items-center gap-2">
+        <button type="button" onClick={() => { const v = !bargeRef.current; bargeRef.current = v; setBarge(v); store.set("fos-live-barge", v ? "1" : "0"); }} className="rounded-full border border-line-strong bg-surface/95 px-3 py-1.5 text-xs shadow-pop" aria-pressed={barge} title="Only turn this on with a headset; on speakers it hears the assistant's own voice">Voice interrupt: {barge ? "on (headset)" : "off"}</button>
         {ui === "speaking" && <button type="button" onClick={() => { stopSpeaking(); set("listening"); }} className="rounded-full border border-line-strong bg-surface px-3 py-2 text-sm font-medium shadow-pop active:scale-95">Stop</button>}
         <button type="button" aria-pressed={on}
           aria-label={on ? "Turn voice assistant off" : "Turn voice assistant on"}

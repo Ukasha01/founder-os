@@ -109,7 +109,7 @@ test("voice provider selection honours explicit choice and falls back sensibly",
 import { routeTools, TOOLS } from "../../src/lib/ai/tools.ts";
 import { providerOrder, toOpenAiMessages, toOpenAiTools, parseOpenAi, compatProviders } from "../../src/lib/ai/llm.ts";
 import { toGeminiContents, generationConfig } from "../../src/lib/ai/gemini.ts";
-import { sttOrder, hasDevanagari } from "../../src/lib/ai/speech.ts";
+import { sttOrder, hasDevanagari, confidentText } from "../../src/lib/ai/speech.ts";
 
 test("tool routing: every read tool always, writes only for the topic mentioned", () => {
   const reads = Object.entries(TOOLS).filter(([, t]) => t.kind === "read").map(([k]) => k);
@@ -223,4 +223,11 @@ test("filler phrases that speech recognition invents on silence are dropped, but
 test("a short yes is never mistaken for echo, but a repeated sentence is", () => {
   assert.equal(isEcho("yes", "DELETE 7 tasks. Say yes to confirm, or no to skip."), false);
   assert.equal(isEcho("Let me know which of these, or both, you'd like to delete.", "Which task to remove? Let me know which of these, or both, you'd like to delete."), true);
+});
+test("unsure speech segments are dropped; foreign-script guesses are dropped", () => {
+  const body = { text: "x", segments: [{ text: "add a task", no_speech_prob: 0.05, avg_logprob: -0.2 }, { text: "thank you", no_speech_prob: 0.9, avg_logprob: -0.3 }, { text: "blah", no_speech_prob: 0.1, avg_logprob: -1.6 }] };
+  assert.equal(confidentText(body), "add a task");
+  assert.equal(confidentText({ text: "plain" }), "plain");
+  assert.equal(cleanTranscript("야, 만나서 너 좀 쳐보죠."), "");
+  assert.equal(cleanTranscript("Привет"), "");
 });
