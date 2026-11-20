@@ -109,7 +109,7 @@ test("voice provider selection honours explicit choice and falls back sensibly",
 import { routeTools, TOOLS } from "../../src/lib/ai/tools.ts";
 import { providerOrder, toOpenAiMessages, toOpenAiTools, parseOpenAi, compatProviders } from "../../src/lib/ai/llm.ts";
 import { toGeminiContents, generationConfig } from "../../src/lib/ai/gemini.ts";
-import { sttOrder } from "../../src/lib/ai/speech.ts";
+import { sttOrder, hasDevanagari } from "../../src/lib/ai/speech.ts";
 
 test("tool routing: every read tool always, writes only for the topic mentioned", () => {
   const reads = Object.entries(TOOLS).filter(([, t]) => t.kind === "read").map(([k]) => k);
@@ -194,4 +194,9 @@ test("Urdu conversations get Urdu previews and a 'heard' echo for confirmations"
   assert.equal(localize("bulk_tasks", {}, "DELETE 72 tasks", false), "DELETE 72 tasks");
   const r = composeReply({ urdu: false, modelText: "", done: [], waiting: ["DELETE 5 tasks"], errors: [], heard: "delete nn" });
   assert.match(r, /^I heard: “delete nn”\./);
+});
+test("Hindi-script transcripts are detected so they can be redone as Urdu", () => {
+  assert.equal(hasDevanagari("यार मुझे यह बताओ"), true);
+  assert.equal(hasDevanagari("یار مجھے یہ بتاؤ"), false);
+  assert.equal(hasDevanagari("Is there any event"), false);
 });

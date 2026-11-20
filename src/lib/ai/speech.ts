@@ -78,21 +78,31 @@ async function sttGemini(wav: Uint8Array): Promise<SttResult> {
 
 // Whisper on Groq: very fast, free allowance counted in audio seconds. Language is pinned to Urdu because Whisper's
 // auto-detect often mistakes Urdu for Hindi or Arabic; the hint text keeps English words (task, deadline) intact.
+async function groqOnce(key: string, wav: Uint8Array, language?: string): Promise<Response> {
+  const form = new FormData();
+  form.append("file", new Blob([wav as BlobPart], { type: "audio/wav" }), "speech.wav");
+  form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
+  form.append("temperature", "0");
+  if (language) form.append("language", language);
+  return fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(20000) });
+}
+// Whisper's language guess is right for English but often calls spoken Urdu "Hindi" and writes Devanagari. So: detect the
+// language first (keeps English as English); if the result comes back in Devanagari, run it again pinned to Urdu.
+// (A pinned Urdu run is NOT the default: it turns English sentences into Urdu-script gibberish. STT_LANGUAGE overrides both.)
+export const hasDevanagari = (t: string) => /[\u0900-\u097F]/.test(t);
 async function sttGroq(wav: Uint8Array): Promise<SttResult> {
   const key = process.env.GROQ_API_KEY;
   if (!key) return { ok: false, reason: "not_configured", message: "No Groq key is set." };
   try {
-    const form = new FormData();
-    form.append("file", new Blob([wav as BlobPart], { type: "audio/wav" }), "speech.wav");
-    form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
-    // Logs showed Whisper repeating its own hint text ("...ملا کر بولا گیا ہے") as if you had said it, and forcing Urdu
-    // turned English sentences into Urdu-script gibberish. So: no hint text, and the language is detected unless STT_LANGUAGE is set.
-    if (process.env.STT_LANGUAGE) form.append("language", process.env.STT_LANGUAGE);
-    form.append("temperature", "0");
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(20000) });
+    let res = await groqOnce(key, wav, process.env.STT_LANGUAGE || undefined);
     if (res.status === 429) return { ok: false, reason: "quota", message: "Groq's free limit is reached for now." };
     if (!res.ok) return { ok: false, reason: "unavailable", message: `Groq speech recognition is unavailable (HTTP ${res.status}).` };
-    return { ok: true, text: cleanTranscript(String(((await res.json()) as { text?: string }).text ?? "")) };
+    let text = cleanTranscript(String(((await res.json()) as { text?: string }).text ?? ""));
+    if (!process.env.STT_LANGUAGE && hasDevanagari(text)) {
+      res = await groqOnce(key, wav, "ur");
+      if (res.ok) text = cleanTranscript(String(((await res.json()) as { text?: string }).text ?? ""));
+    }
+    return { ok: true, text };
   } catch {
     return { ok: false, reason: "unavailable", message: "Could not reach Groq (timeout or network)." };
   }
