@@ -22,6 +22,6 @@ const toks = (s: string) => s.toLowerCase().normalize("NFKC").replace(/[’‘]/
 export function isEcho(heard: string, lastReply: string): boolean {
   const h = toks(heard), r = new Set(toks(lastReply));
   // Needs 3+ words: a bare "yes" / "haan" can appear in the assistant's own prompt and must still count as your answer.
-  if (h.length < 3 || h.length > 12 || !r.size) return false;
+  if (h.length < 3 || h.length > 25 || !r.size) return false;
   return h.filter((w) => r.has(w)).length / h.length >= 0.7;
 }
