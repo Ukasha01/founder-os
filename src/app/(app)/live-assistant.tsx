@@ -31,7 +31,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     running: false, ctx: null as AudioContext | null, stream: null as MediaStream | null, node: null as AudioWorkletNode | null,
     vad: new Vad(), preroll: [] as Float32Array[], prerollLen: 0, chunks: [] as Float32Array[], inUtt: false, calibrating: 0,
     ui: "off" as Ui, epoch: 0, speakToken: 0, source: null as AudioBufferSourceNode | null, abort: null as AbortController | null,
-    lastText: "", lastAt: 0, lastLevel: 0, noUrduVoiceWarned: false,
+    lastText: "", lastAt: 0, duringSpeech: false, candLen: 0, lastLevel: 0, noUrduVoiceWarned: false,
   });
   const set = useCallback((u: Ui) => { S.current.ui = u; setUi(u); }, []);
 
@@ -151,6 +151,15 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     } catch { setNotice("Could not reach the assistant. Check your connection."); set("listening"); }
   }, [router, set, speak, stopSpeaking]);
 
+  // Only a stop word ("ruk jao", "stop", "بس"...) is acted on while the assistant is speaking; anything else is ignored.
+  const checkStopWord = useCallback(async (wav: Uint8Array) => {
+    try {
+      const r = await fetch("/api/voice/transcribe", { method: "POST", headers: { "content-type": "audio/wav" }, body: wav as BodyInit });
+      const j = (await r.json().catch(() => ({}))) as { text?: string };
+      if (r.ok && classifyCommand((j.text ?? "").trim()) === "stop" && S.current.ui === "speaking") { stopSpeaking(); if (S.current.running) set("listening"); }
+    } catch { /* ignore: the assistant just keeps talking */ }
+  }, [set, stopSpeaking]);
+
   const onBlock = useCallback((block: Float32Array) => {
     const s = S.current;
     const rate = s.ctx!.sampleRate;
@@ -160,23 +169,33 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     const now = performance.now();
     if (now - s.lastLevel > 100) { s.lastLevel = now; setLevel(Math.min(1, level * 8)); }
     const ds = downsample(block, rate, RATE);
-    if (s.inUtt) s.chunks.push(ds);
+    if (s.inUtt) {
+      s.chunks.push(ds);
+      // While the assistant talks, only a short sound (a stop word) is a candidate. Longer sound is its own voice
+      // coming back through the speakers, or a real conversation: either way, do not act on it.
+      if (s.duringSpeech && (s.candLen += ds.length) > RATE * 2.5) { s.inUtt = false; s.duringSpeech = false; s.chunks = []; s.vad.reset(); return; }
+    }
     else { s.preroll.push(ds); s.prerollLen += ds.length; while (s.prerollLen > PREROLL && s.preroll.length > 1) s.prerollLen -= s.preroll.shift()!.length; }
     const ev = s.vad.feed(level, dt, s.ui === "speaking");
     if (ev === "start") {
-      if (s.ui === "speaking") stopSpeaking();           // you interrupted: stop talking at once
-      s.epoch++;                                         // anything still being worked out for the old question is now stale
+      if (s.ui === "speaking") {
+        // Speakers can feed the assistant's own voice back into the mic, so a sound while it talks does NOT stop it.
+        // We keep the assistant talking, record the short sound and check whether it was a stop word.
+        s.duringSpeech = true; s.candLen = 0;
+      } else s.epoch++;                                  // anything still being worked out for the old question is now stale
       s.inUtt = true; s.chunks = [...s.preroll];
       s.preroll = []; s.prerollLen = 0;
-      set("hearing");
+      if (!s.duringSpeech) set("hearing");
     } else if (ev === "end" && s.inUtt) {
       s.inUtt = false;
       const total = s.chunks.reduce((n, c) => n + c.length, 0);
       const all = new Float32Array(total); let o = 0; for (const c of s.chunks) { all.set(c, o); o += c.length; }
       s.chunks = [];
-      void handleUtterance(pcm16ToWav(int16ToBytes(floatToInt16(all)), RATE));
-    } else if (ev === "discard") { s.inUtt = false; s.chunks = []; if (s.ui === "hearing") set("listening"); }
-  }, [handleUtterance, set, stopSpeaking]);
+      const wav = pcm16ToWav(int16ToBytes(floatToInt16(all)), RATE);
+      if (s.duringSpeech) { s.duringSpeech = false; void checkStopWord(wav); }
+      else void handleUtterance(wav);
+    } else if (ev === "discard") { s.inUtt = false; s.duringSpeech = false; s.chunks = []; if (s.ui === "hearing") set("listening"); }
+  }, [handleUtterance, checkStopWord, set]);
 
   const stop = useCallback(() => {
     const s = S.current;
@@ -184,7 +203,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     s.node?.disconnect(); s.node = null;
     s.stream?.getTracks().forEach((t) => t.stop()); s.stream = null;
     void s.ctx?.close().catch(() => undefined); s.ctx = null;
-    s.inUtt = false; s.chunks = []; s.preroll = []; s.prerollLen = 0;
+    s.inUtt = false; s.duringSpeech = false; s.chunks = []; s.preroll = []; s.prerollLen = 0;
     set("off");
   }, [set, stopSpeaking]);
 
