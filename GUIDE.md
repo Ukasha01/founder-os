@@ -82,3 +82,6 @@ What the voice assistant can read now: tasks (with notes, subtasks, comments, hi
 Tasks (create, edit, complete, reschedule, move, delete, bulk delete/complete/cancel, undo delete), goals and milestones, habits, KPIs, people, meetings (and attendees), commitments (status, dates), calendar events, recurring tasks (create, pause/resume, delete), work timers (start/stop), workspaces (create/rename/archive), inbox notes (add/archive/delete), daily reviews, time logging.
 - Anything that deletes or archives always asks you first, even with auto-approve on. Everything is checked in the database after it runs.
 - Not available to the assistant: Settings (capacity, weights, notifications) and account/security changes. Those stay manual on purpose.
+
+## Urdu voice on every browser
+Replies are spoken by (1) the browser's own Urdu voice if it has one (Edge, most Android phones), otherwise by the server: ElevenLabs if `ELEVENLABS_API_KEY` is set, then Microsoft's free neural voice, then Gemini. The Microsoft voice uses an unofficial route and may stop working; ElevenLabs is the reliable one. Set the key in Vercel → Project → Settings → Environment Variables, then redeploy.

@@ -194,13 +194,46 @@ async function ttsEleven(text: string): Promise<TtsResult> {
   }
 }
 
+// Microsoft's free neural voices (the same ones Edge uses), reached through the open-source `edge-tts-universal` package.
+// This is NOT an official, supported API: it can stop working without notice, so it is only used after ElevenLabs.
+async function ttsEdge(text: string): Promise<TtsResult> {
+  const urdu = /[\u0600-\u06FF]/.test(text);
+  const voice = urdu ? (process.env.EDGE_TTS_VOICE_UR || "ur-PK-UzmaNeural") : (process.env.EDGE_TTS_VOICE_EN || "en-US-AriaNeural");
+  try {
+    const { UniversalEdgeTTS } = await import("edge-tts-universal");
+    const result = await Promise.race([
+      new UniversalEdgeTTS(text, voice).synthesize(),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15000)),
+    ]);
+    const bytes = new Uint8Array(await result.audio.arrayBuffer());
+    if (!bytes.length) return { ok: false, reason: "unavailable", message: "Microsoft voice returned no audio." };
+    return { ok: true, bytes, mime: "audio/mpeg", provider: "edge" };
+  } catch {
+    return { ok: false, reason: "unavailable", message: "Microsoft voice is unavailable right now." };
+  }
+}
+
+// Order tried for each reply: ElevenLabs (official, best), then Microsoft's free voice, then Gemini voice.
+export function ttsOrder(env: Record<string, string | undefined>): ("elevenlabs" | "edge" | "gemini")[] {
+  const want = (env.TTS_PROVIDER ?? "").toLowerCase();
+  if (want === "off") return [];
+  const all: ("elevenlabs" | "edge" | "gemini")[] = [];
+  if (env.ELEVENLABS_API_KEY) all.push("elevenlabs");
+  if (env.TTS_EDGE !== "off") all.push("edge");
+  if (env.GEMINI_API_KEY) all.push("gemini");
+  return all.includes(want as "edge") ? [want as "elevenlabs" | "edge" | "gemini", ...all.filter((x) => x !== want)] : all;
+}
+
 export async function synthesize(text: string): Promise<TtsResult> {
   const t = text.trim().slice(0, 500);
   if (!t) return { ok: false, reason: "unavailable", message: "Nothing to say." };
-  const provider = pickProvider(process.env);
-  if (provider === "off") return { ok: false, reason: "not_configured", message: "No voice provider is configured." };
-  const first = provider === "elevenlabs" ? await ttsEleven(t) : await ttsGemini(t);
-  if (first.ok || provider !== "elevenlabs") return first;
-  // ElevenLabs failed or is out of free characters: try Gemini voice before giving up.
-  return process.env.GEMINI_API_KEY ? ttsGemini(t) : first;
+  const order = ttsOrder(process.env);
+  if (!order.length) return { ok: false, reason: "not_configured", message: "No voice provider is configured." };
+  let last: TtsResult | null = null;
+  for (const p of order) {
+    const r = p === "elevenlabs" ? await ttsEleven(t) : p === "edge" ? await ttsEdge(t) : await ttsGemini(t);
+    if (r.ok) return r;
+    last = !last || r.reason === "quota" ? r : last;
+  }
+  return last!;
 }

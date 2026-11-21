@@ -109,7 +109,7 @@ test("voice provider selection honours explicit choice and falls back sensibly",
 import { routeTools, TOOLS } from "../../src/lib/ai/tools.ts";
 import { providerOrder, toOpenAiMessages, toOpenAiTools, parseOpenAi, compatProviders } from "../../src/lib/ai/llm.ts";
 import { toGeminiContents, generationConfig } from "../../src/lib/ai/gemini.ts";
-import { sttOrder, hasDevanagari, confidentText } from "../../src/lib/ai/speech.ts";
+import { sttOrder, hasDevanagari, confidentText, ttsOrder } from "../../src/lib/ai/speech.ts";
 
 test("tool routing: every read tool always, writes only for the topic mentioned", () => {
   const reads = Object.entries(TOOLS).filter(([, t]) => t.kind === "read").map(([k]) => k);
@@ -241,4 +241,11 @@ test("Urdu turns prefer Gemini; English prefers the fast provider; explicit choi
 test("markdown symbols are removed from replies", () => {
   assert.equal(stripMarkdown("* **Wapsi** میں: * Email Nazir"), "- Wapsi میں:\n- Email Nazir");
   assert.equal(composeReply({ urdu: false, modelText: "**Done** `x`", done: [], waiting: [], errors: [] }), "Done x");
+});
+test("voice order: ElevenLabs first, Microsoft free voice next, Gemini last; switches respected", () => {
+  assert.deepEqual(ttsOrder({}), ["edge"]);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g" }), ["elevenlabs", "edge", "gemini"]);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_EDGE: "off" }), ["elevenlabs"]);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_PROVIDER: "off" }), []);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g", TTS_PROVIDER: "gemini" }), ["gemini", "elevenlabs", "edge"]);
 });
