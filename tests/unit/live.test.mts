@@ -255,3 +255,20 @@ test("spoken text is short and ends at a sentence", () => {
   assert.ok(out.length <= 260 && out.endsWith("."), out);
   assert.equal(forSpeech("Short one."), "Short one.");
 });
+
+// ---- voice latency work ----
+import { breaker } from "../../src/lib/ai/breaker.ts";
+import { elevenSettings } from "../../src/lib/ai/speech.ts";
+test("breaker skips a provider after repeated failures, then recovers", () => {
+  breaker.reset();
+  assert.equal(breaker.open("x", 0), false);
+  breaker.fail("x", { limit: 2, coolMs: 1000, now: 0 }); assert.equal(breaker.open("x", 1), false);
+  breaker.fail("x", { limit: 2, coolMs: 1000, now: 0 }); assert.equal(breaker.open("x", 500), true); assert.equal(breaker.open("x", 1500), false);
+  breaker.fail("x", { limit: 1, coolMs: 1000, now: 0 }); breaker.ok("x"); assert.equal(breaker.open("x", 1), false);
+});
+test("ElevenLabs: Urdu uses v3, English uses flash; env overrides win", () => {
+  assert.equal(elevenSettings({}, true).model, "eleven_v3");
+  assert.equal(elevenSettings({}, false).model, "eleven_flash_v2_5");
+  assert.equal(elevenSettings({ ELEVENLABS_VOICE_ID_UR: "abc" }, true).voice, "abc");
+  assert.equal(elevenSettings({ ELEVENLABS_MODEL_UR: "m" }, true).model, "m");
+});

@@ -1,3 +1,4 @@
+import { breaker } from "./breaker.ts";
 // Server-side speech: audio -> text (Gemini) and text -> audio (ElevenLabs or Gemini).
 // Why not the browser's built-in speech tools: their Urdu is weak and many phones have no Urdu voice at all.
 // Pure helpers are exported separately so they can be unit-tested without network access.
@@ -162,7 +163,7 @@ async function ttsGemini(text: string): Promise<TtsResult> {
         contents: [{ parts: [{ text: `Say this in a natural, warm Pakistani Urdu accent at a calm conversational pace (English words in English): ${text}` }] }],
         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(10000),
     });
     if (res.status === 429) return { ok: false, reason: "quota", message: "Gemini's free voice limit is reached for now." };
     if (!res.ok) return { ok: false, reason: "unavailable", message: `Gemini voice is unavailable (HTTP ${res.status}).` };
@@ -175,16 +176,23 @@ async function ttsGemini(text: string): Promise<TtsResult> {
   }
 }
 
+// Urdu is only supported by Eleven v3; Flash v2.5 is the fast model for English. Voice default is the free-plan premade "Eric".
+export function elevenSettings(env: Record<string, string | undefined>, urdu: boolean) {
+  const voice = (urdu ? env.ELEVENLABS_VOICE_ID_UR : env.ELEVENLABS_VOICE_ID_EN) || env.ELEVENLABS_VOICE_ID || "cjVigY5qzO86Huf0OWal";
+  const model = (urdu ? env.ELEVENLABS_MODEL_UR : env.ELEVENLABS_MODEL_EN) || env.ELEVENLABS_MODEL || (urdu ? "eleven_v3" : "eleven_flash_v2_5");
+  const format = env.ELEVENLABS_FORMAT || "mp3_22050_32";
+  return { voice, model, format };
+}
+
 async function ttsEleven(text: string): Promise<TtsResult> {
   const key = process.env.ELEVENLABS_API_KEY!;
-  const voice = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
-  const model = process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2";
+  const { voice, model, format } = elevenSettings(process.env, /[\u0600-\u06FF]/.test(text));
   try {
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_64`, {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=${encodeURIComponent(format)}`, {
       method: "POST",
       headers: { "content-type": "application/json", "xi-api-key": key },
       body: JSON.stringify({ text, model_id: model }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
       // Say what ElevenLabs actually answered. HTTP 429/402 are NOT always "free characters used up" (it can also be a plan
@@ -211,7 +219,7 @@ async function ttsEdge(text: string): Promise<TtsResult> {
     const { UniversalEdgeTTS } = await import("edge-tts-universal");
     const result = await Promise.race([
       new UniversalEdgeTTS(text, voice).synthesize(),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 15000)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 6000)),
     ]);
     const bytes = new Uint8Array(await result.audio.arrayBuffer());
     if (!bytes.length) return { ok: false, reason: "unavailable", message: "Microsoft voice returned no audio." };
@@ -234,15 +242,25 @@ export function ttsOrder(env: Record<string, string | undefined>): ("elevenlabs"
   return all.includes(want as "edge") ? [want as "elevenlabs" | "edge" | "gemini", ...all.filter((x) => x !== want)] : all;
 }
 
-export async function synthesize(text: string): Promise<TtsResult> {
+export type Timed = TtsResult & { ms?: number; tried?: string[] };
+export async function synthesize(text: string): Promise<Timed> {
+  const t0 = Date.now();
+  const r = await synthesizeInner(text);
+  return { ...r, ms: Date.now() - t0 };
+}
+
+async function synthesizeInner(text: string): Promise<TtsResult> {
   const t = text.trim().slice(0, 500);
   if (!t) return { ok: false, reason: "unavailable", message: "Nothing to say." };
   const order = ttsOrder(process.env);
   if (!order.length) return { ok: false, reason: "not_configured", message: "No voice provider is configured." };
   const failures: string[] = []; let reason: "quota" | "unavailable" = "unavailable";
   for (const p of order) {
+    if (breaker.open(`tts:${p}`)) { failures.push(`${p} skipped (recent failures)`); continue; }
     const r = p === "elevenlabs" ? await ttsEleven(t) : p === "edge" ? await ttsEdge(t) : await ttsGemini(t);
-    if (r.ok) return r;
+    if (r.ok) { breaker.ok(`tts:${p}`); return r; }
+    // quota/plan errors are not going to fix themselves in a minute; open longer
+    breaker.fail(`tts:${p}`, { limit: r.reason === "quota" ? 1 : 2, coolMs: r.reason === "quota" ? 300_000 : 45_000 });
     failures.push(r.message); if (r.reason === "quota") reason = "quota";
   }
   return { ok: false, reason, message: failures.join(" | ") };

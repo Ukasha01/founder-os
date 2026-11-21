@@ -3,6 +3,7 @@
 // If one is out of free quota or down, the next one answers, so a single limit never stops the assistant.
 import { FUNCTION_DECLARATIONS, SYSTEM_PROMPT, routeTools } from "./tools.ts";
 import { geminiChat } from "./gemini.ts";
+import { breaker } from "./breaker.ts";
 
 export type ToolCall = { id: string; name: string; args: Record<string, unknown> };
 export type ToolResult = { id: string; name: string; output: unknown };
@@ -80,7 +81,7 @@ async function askCompat(p: Compat, msgs: Msg[], context: string, o: LlmOpts): P
     // gpt-oss models "reason" before answering; those tokens count against the free limits, so keep it light.
     const body = { model: p.model, temperature: 0.2, max_tokens: 700, messages: toOpenAiMessages(`${SYSTEM_PROMPT}\n\n${context}`, msgs), tools: toOpenAiTools(routeTools(o.userText)), tool_choice: "auto" };
     const post = (extra: Record<string, unknown>) => fetch(`${p.base}/chat/completions`, {
-      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${p.key}` }, body: JSON.stringify({ ...body, ...extra }), signal: AbortSignal.timeout(20000),
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${p.key}` }, body: JSON.stringify({ ...body, ...extra }), signal: AbortSignal.timeout(12000),
     });
     let res = await post(/gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {});
     if (res.status === 400 && /gpt-oss/.test(p.model)) res = await post({});   // in case the setting is not accepted
@@ -101,8 +102,12 @@ export async function askLlm(msgs: Msg[], context: string, o: LlmOpts): Promise<
   const compat = new Map(compatProviders(env).map((p) => [p.name, p]));
   let last: LlmResult | null = null;
   for (const name of order) {
+    // a provider that just failed (quota, outage) is skipped for a while instead of costing a timeout on every turn,
+    // unless it is the only one left
+    if (breaker.open(`llm:${name}`) && order.length > 1 && name !== order[order.length - 1]) continue;
     const r = name === "gemini" ? await geminiChat(msgs, context) : await askCompat(compat.get(name)!, msgs, context, o);
-    if (r.ok) return r;
+    if (r.ok) { breaker.ok(`llm:${name}`); return r; }
+    breaker.fail(`llm:${name}`, r.reason === "quota" ? { limit: 1, coolMs: 90_000 } : { limit: 2, coolMs: 30_000 });
     last = !last || r.reason === "quota" ? r : last;  // keep the most useful message: a quota notice beats a generic failure
   }
   if (last && !last.ok && last.reason === "quota" && !env.GROQ_API_KEY) return { ...last, message: `${last.message} Add a free GROQ_API_KEY in Vercel to get a second, larger allowance.` };

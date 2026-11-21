@@ -85,3 +85,8 @@ Tasks (create, edit, complete, reschedule, move, delete, bulk delete/complete/ca
 
 ## Urdu voice on every browser
 Replies are spoken by (1) the browser's own Urdu voice if it has one (Edge, most Android phones), otherwise by the server: ElevenLabs if `ELEVENLABS_API_KEY` is set, then Microsoft's free neural voice, then Gemini. The Microsoft voice uses an unofficial route and may stop working; ElevenLabs is the reliable one. Set the key in Vercel → Project → Settings → Environment Variables, then redeploy.
+
+## Voice speed and diagnosis
+- Open `/api/voice/diag` (signed in) to see the models/voices in use and LLM timings; add `?speak=1` to also time real speech (uses ~50 ElevenLabs characters).
+- Browser console shows `[timing]` lines: speech-to-text, assistant turn (LLM ms), each speech chunk (server ms, provider) and when playback started.
+- Providers that just failed are skipped for 30-300 s (circuit breaker), so one dead provider no longer adds a timeout to every reply.

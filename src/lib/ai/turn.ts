@@ -74,7 +74,7 @@ async function handleDecision(c: Ctx, conversationId: string, decision: "yes" | 
 type Proposal = { name: string; args: Record<string, unknown> };
 export type TurnResult =
   | { ok: false; error: string }
-  | { ok: true; reply: string; pending: number; executed: number; refused: number; warning?: string };
+  | { ok: true; reply: string; pending: number; executed: number; refused: number; warning?: string; timing?: { llmMs: number; rounds: number; model: string; totalMs: number } };
 
 export async function runTurn(supabase: SupabaseClient, rawText: string, voice: boolean): Promise<TurnResult> {
   const message = rawText.trim();
@@ -129,8 +129,11 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const proposals: Proposal[] = [];
   const readLog: { tool_name: string; input: Record<string, unknown> }[] = [];
   let finalText = "", model = "", failure: string | null = null;
+  const t0 = Date.now(); let llmMs = 0, rounds = 0;
   for (let round = 0; round < 4; round++) {
+    const tl = Date.now(); rounds++;
     const r = await askLlm(msgs, context, { voice, userText: message, urdu });
+    llmMs += Date.now() - tl;
     if (!r.ok) { failure = r.message; break; }
     model = `${r.provider}:${r.model}`;
     const reads = r.calls.filter((x) => isToolName(x.name) && isRead(x.name));
@@ -183,5 +186,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   // When changes were proposed or made, the reply is built from what really happened, not from the model's wording.
   const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - 8), heard: voice ? message : undefined });
   if (aMsg && proposals.length) await supabase.from("ai_messages").update({ content: reply }).eq("id", aMsg.id);
-  return { ok: true, reply, pending, executed, refused, warning: failure ?? undefined };
+  const timing = { llmMs, rounds, model, totalMs: Date.now() - t0 };
+  console.log(`[timing] turn llm=${llmMs}ms rounds=${rounds} model=${model || "none"} total=${timing.totalMs}ms`);
+  return { ok: true, reply, pending, executed, refused, warning: failure ?? undefined, timing };
 }

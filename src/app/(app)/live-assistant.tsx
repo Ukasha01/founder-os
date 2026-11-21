@@ -91,8 +91,9 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     const token = s.speakToken;
     set("speaking");
     const sentences = text.slice(0, 600).split(/(?<=[.!?۔؟])\s+/).filter(Boolean);
+    // First chunk is just the first sentence so audio starts sooner; the rest are grouped.
     const parts: string[] = [];
-    for (const x of sentences) { if (parts.length && (parts[parts.length - 1] + " " + x).length <= 220) parts[parts.length - 1] += " " + x; else parts.push(x); }
+    for (const x of sentences) { if (parts.length > 1 && (parts[parts.length - 1] + " " + x).length <= 220) parts[parts.length - 1] += " " + x; else parts.push(x); }
     const urdu = isUrdu(text);
     const local = await findVoice(urdu);
     if (token !== s.speakToken) return;
@@ -100,18 +101,19 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     else {
       // No phone voice for this language: use the server voice (ElevenLabs / Gemini) if one is set up.
       const ac = new AbortController(); s.abort = ac;
+      const tReq = performance.now();
       const fetchPart = async (p: string) => {
         const r = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: p }), signal: ac.signal });
         if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
-        return s.ctx!.decodeAudioData(await r.arrayBuffer());
+        const srv = r.headers.get("x-tts-ms"); const prov = r.headers.get("x-voice-provider");
+        const buf = await s.ctx!.decodeAudioData(await r.arrayBuffer());
+        console.log(`[timing] tts part ${p.length} chars: server=${srv}ms provider=${prov} client=${Math.round(performance.now() - tReq)}ms`);
+        return buf;
       };
-      let next: Promise<AudioBuffer> | null = parts.length ? fetchPart(parts[0]) : null;
-      next?.catch(() => undefined);
-      for (let i = 0; i < parts.length && token === s.speakToken; i++) {
-        const cur = next!;
-        next = i + 1 < parts.length ? fetchPart(parts[i + 1]) : null;
-        next?.catch(() => undefined);
-        try { await playBuffer(await cur, token); }
+      // All parts are requested at once (ElevenLabs allows 4 at a time); they play in order.
+      const fetched = parts.slice(0, 4).map((p) => { const f = fetchPart(p); f.catch(() => undefined); return f; });
+      for (let i = 0; i < fetched.length && token === s.speakToken; i++) {
+        try { const b = await fetched[i]; if (i === 0) console.log(`[timing] playback start ${Math.round(performance.now() - tReq)}ms after first request`); await playBuffer(b, token); }
         catch (e) {
           const why = e instanceof Error ? e.message : "";
           if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? `اردو آواز نہیں چل سکی۔ جواب لکھا ہوا دکھایا جا رہا ہے۔ وجہ: ${why}` : `Voice is unavailable (${why}); showing text only.`); }
@@ -129,8 +131,10 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     set("transcribing");
     let text = "";
     try {
+      const tStt = performance.now();
       const r = await fetch("/api/voice/transcribe", { method: "POST", headers: { "content-type": "audio/wav" }, body: wav as BodyInit });
       const j = (await r.json().catch(() => ({}))) as { text?: string; error?: string };
+      console.log(`[timing] speech-to-text: ${Math.round(performance.now() - tStt)}ms`);
       if (!r.ok) { setNotice(j.error ?? "I could not understand the audio."); return set("listening"); }
       text = (j.text ?? "").trim();
     } catch { setNotice("No connection. Voice needs the internet."); return set("listening"); }
@@ -149,8 +153,10 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
 
     set("thinking");
     try {
+      const tTurn = performance.now();
       const r = await fetch("/api/assistant/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: text, voice: true }) });
-      const j = (await r.json()) as { ok: boolean; error?: string; reply?: string };
+      const j = (await r.json()) as { ok: boolean; error?: string; reply?: string; timing?: { llmMs: number; rounds: number; model: string; totalMs: number } };
+      console.log(`[timing] assistant turn: round-trip=${Math.round(performance.now() - tTurn)}ms`, j.timing ?? "");
       router.refresh();
       if (!j.ok) { setNotice(j.error ?? "The assistant could not answer."); return set("listening"); }
       const out = j.reply ?? "";
