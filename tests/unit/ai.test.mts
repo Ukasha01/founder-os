@@ -43,7 +43,20 @@ test("every tool has a declaration, a schema and the right kind", () => {
 });
 test("only deleting needs confirmation, and it is the only delete", () => {
   assert.equal(needsConfirmation("delete_task"), true); assert.equal(needsConfirmation("complete_task"), false);
-  assert.deepEqual(Object.keys(TOOLS).filter((n) => n.startsWith("delete")), ["delete_task"]);
+  // Every tool that deletes or archives must always ask first; nothing destructive may run on auto-approve.
+  const destructive = Object.keys(TOOLS).filter((n) => /^(delete|archive|bulk)/.test(n));
+  assert.deepEqual(destructive.sort(), ["archive_item", "bulk_tasks", "delete_item", "delete_task"]);
+  for (const n of destructive) assert.equal(needsConfirmation(n as keyof typeof TOOLS), true, n);
+});
+test("new manual-parity tools validate input", () => {
+  assert.equal(TOOLS.update_commitment.schema.safeParse({ commitment_id: id }).success, false);
+  assert.equal(TOOLS.update_commitment.schema.safeParse({ commitment_id: id, status: "cancelled" }).success, true);
+  assert.equal(TOOLS.delete_item.schema.safeParse({ kind: "person", id }).success, true);
+  assert.equal(TOOLS.delete_item.schema.safeParse({ kind: "task", id }).success, false);
+  assert.equal(TOOLS.start_timer.schema.safeParse({}).success, false);
+  assert.equal(TOOLS.manage_workspace.schema.safeParse({ action: "rename", name: "X" }).success, false);
+  assert.equal(TOOLS.manage_workspace.schema.safeParse({ action: "create", name: "X" }).success, true);
+  assert.equal(TOOLS.meeting_attendee.schema.safeParse({ meeting_id: id, person: "Ali", action: "add" }).success, true);
 });
 test("new tool schemas validate real-world input", () => {
   assert.equal(TOOLS.update_task.schema.safeParse({ task_id: id }).success, false);

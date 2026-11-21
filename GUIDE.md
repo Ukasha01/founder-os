@@ -77,3 +77,8 @@ What the voice assistant can read now: tasks (with notes, subtasks, comments, hi
 - While the assistant is speaking, the microphone is not listened to. This is deliberate: it makes it impossible for the assistant to hear its own voice (a problem on laptop speakers). Use the **Stop** button to interrupt. It listens again about a second after it finishes.
 - "Voice interrupt" (button next to the mic) lets you say "ruk jao" while it talks. Turn it on only with a headset.
 - Speech recognition drops sounds it is unsure about, and ignores Korean/Chinese/Russian guesses, instead of passing guesses to the assistant.
+
+## What the assistant can do (same as you can by hand)
+Tasks (create, edit, complete, reschedule, move, delete, bulk delete/complete/cancel, undo delete), goals and milestones, habits, KPIs, people, meetings (and attendees), commitments (status, dates), calendar events, recurring tasks (create, pause/resume, delete), work timers (start/stop), workspaces (create/rename/archive), inbox notes (add/archive/delete), daily reviews, time logging.
+- Anything that deletes or archives always asks you first, even with auto-approve on. Everything is checked in the database after it runs.
+- Not available to the assistant: Settings (capacity, weights, notifications) and account/security changes. Those stay manual on purpose.

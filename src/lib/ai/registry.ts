@@ -223,11 +223,89 @@ const LABEL: Record<string, [string, string, string]> = {
   milestone_id: ["milestones", "title", "milestone"], meeting_id: ["meetings", "title", "meeting"], commitment_id: ["commitments", "description", "commitment"],
 };
 
+
+// ---- the remaining things you can do by hand: commitments, deleting/archiving items, timers, workspaces, attendees ----
+type ItemKind = { table: string; col: string; what: string; soft?: boolean; extra?: (q: any) => any };   // eslint-disable-line @typescript-eslint/no-explicit-any
+const DEL: Record<string, ItemKind> = {
+  commitment: { table: "commitments", col: "description", what: "commitment", soft: true },
+  event: { table: "calendar_events", col: "title", what: "event", soft: true, extra: (q) => q.is("meeting_id", null) },
+  meeting: { table: "meetings", col: "title", what: "meeting", soft: true },
+  goal: { table: "goals", col: "name", what: "goal", soft: true },
+  person: { table: "people", col: "name", what: "person", soft: true },
+  inbox_item: { table: "quick_capture", col: "raw_text", what: "inbox note", soft: true },
+  recurring_rule: { table: "recurrence_rules", col: "name", what: "recurring rule" },
+};
+const ARCH: Record<string, ItemKind> = {
+  habit: { table: "habits", col: "name", what: "habit" }, kpi: { table: "kpi_definitions", col: "name", what: "KPI" },
+  workspace: { table: "workspaces", col: "name", what: "workspace" }, inbox_item: { table: "quick_capture", col: "raw_text", what: "inbox note" },
+};
+const short = (t: string) => (t.length > 60 ? t.slice(0, 57) + "…" : t);
+
+async function labelOf(c: Ctx, k: ItemKind, id: string, soft: boolean): Promise<string | null> {
+  let q = c.supabase.from(k.table).select(`id, ${k.col}`).eq("id", id);
+  if (soft) q = q.is("deleted_at", null);
+  if (k.extra) q = k.extra(q);
+  const { data } = await q.maybeSingle();
+  return data ? short(String((data as unknown as Json)[k.col])) : null;
+}
+
+const NEW_TOOLS = ["update_commitment", "delete_item", "archive_item", "pause_recurring", "start_timer", "stop_timer", "manage_workspace", "meeting_attendee"];
+async function validateMore(c: Ctx, name: string, d: Json): Promise<Validated> {
+  const q = (t: string) => `“${t}”`;
+  switch (name) {
+    case "update_commitment": {
+      const l = await labelOf(c, DEL.commitment, d.commitment_id as string, true); if (!l) return { ok: false, error: "That commitment does not exist." };
+      const bits = [d.status && `status ${String(d.status).replace("_", " ")}`, d.due_date && `due ${d.due_date}`, d.follow_up_date && `follow up ${d.follow_up_date}`].filter(Boolean);
+      return { ok: true, input: d, preview: `Commitment ${q(l)}: ${bits.join(", ")}` };
+    }
+    case "delete_item": {
+      const k = DEL[d.kind as string]; const l = await labelOf(c, k, d.id as string, !!k.soft); if (!l) return { ok: false, error: `That ${k.what} does not exist.` };
+      return { ok: true, input: d, preview: `DELETE ${k.what} ${q(l)}${d.kind === "recurring_rule" ? " (its existing tasks stay)" : ""}` };
+    }
+    case "archive_item": {
+      const k = ARCH[d.kind as string]; const l = await labelOf(c, k, d.id as string, false); if (!l) return { ok: false, error: `That ${k.what} does not exist.` };
+      return { ok: true, input: d, preview: `Archive ${k.what} ${q(l)}` };
+    }
+    case "pause_recurring": {
+      const l = await labelOf(c, DEL.recurring_rule, d.rule_id as string, false); if (!l) return { ok: false, error: "That recurring rule does not exist." };
+      return { ok: true, input: d, preview: `${d.paused ? "Pause" : "Resume"} recurring ${q(l)}` };
+    }
+    case "start_timer": {
+      let label = "";
+      if (d.task_id) { const { data } = await c.supabase.from("tasks").select("title, workspace_id").eq("id", d.task_id as string).is("deleted_at", null).maybeSingle(); if (!data) return { ok: false, error: "That task does not exist." }; label = data.title; d.workspace_id = data.workspace_id; }
+      else { const w = resolveByName(d.workspace as string, c.workspaces); if ("error" in w) return { ok: false, error: w.error }; d.workspace_id = w.id; label = w.name; }
+      const { data: running } = await c.supabase.from("time_entries").select("id").is("ended_at", null).limit(1).maybeSingle();
+      if (running) return { ok: false, error: "A timer is already running. Stop it first." };
+      return { ok: true, input: d, preview: `Start timer on ${q(label)}` };
+    }
+    case "stop_timer": {
+      const { data: run } = await c.supabase.from("time_entries").select("id").is("ended_at", null).limit(1).maybeSingle();
+      if (!run) return { ok: false, error: "No timer is running." };
+      return { ok: true, input: { ...d, entry_id: run.id }, preview: "Stop the running timer" };
+    }
+    case "manage_workspace": {
+      if (d.action === "create") {
+        if (c.workspaces.some((w) => w.name.toLowerCase() === String(d.name).toLowerCase())) return { ok: false, error: "A workspace with that name already exists." };
+        return { ok: true, input: d, preview: `Create workspace ${q(String(d.name))}` };
+      }
+      const w = resolveByName(d.workspace as string, c.workspaces); if ("error" in w) return { ok: false, error: w.error };
+      return { ok: true, input: { ...d, workspace_id: w.id }, preview: `Rename workspace ${q(w.name)} to ${q(String(d.name))}` };
+    }
+    default: { // meeting_attendee
+      const l = await labelOf(c, DEL.meeting, d.meeting_id as string, true); if (!l) return { ok: false, error: "That meeting does not exist." };
+      const { data: ppl } = await c.supabase.from("people").select("id, name").is("deleted_at", null).is("archived_at", null).limit(1000);
+      const r = resolveByName(d.person as string, ppl ?? [], "person"); if ("error" in r) return { ok: false, error: r.error };
+      return { ok: true, input: { ...d, person_id: r.id }, preview: `${d.action === "add" ? "Add" : "Remove"} ${r.name} ${d.action === "add" ? "to" : "from"} meeting ${q(l)}` };
+    }
+  }
+}
+
 export async function validateWrite(c: Ctx, name: ToolName, args: Json): Promise<Validated> {
   const parsed = TOOLS[name].schema.safeParse(args);
   if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ") };
   if (name === "bulk_tasks") return validateBulk(c, parsed.data as Json);
   if (name === "undo_last_delete") return validateUndo(c);
+  if (NEW_TOOLS.includes(name)) return validateMore(c, name, { ...(parsed.data as Json) });
   const input: Json = { ...(parsed.data as Json) };
   const labels: Record<string, string> = {};
   for (const [field, [table, col, what]] of Object.entries(LABEL)) {
@@ -400,6 +478,57 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
       if (!ids.length) fail("Task not found.");
       const { error } = await db.from("tasks").update({ deleted_at: new Date().toISOString() }).in("id", ids); if (error) fail(error.message);
       return { type: "tasks", ids, verified: (await countWhere(db, ids, { deleted: true })) === ids.length };
+    }
+    case "update_commitment": {
+      const patch: Json = {}; for (const k of ["status", "due_date", "follow_up_date"]) if (i[k] !== undefined) patch[k] = i[k];
+      const { error } = await db.from("commitments").update(patch).eq("id", i.commitment_id as string); if (error) fail(error.message);
+      return { type: "commitments", ids: [i.commitment_id as string], verified: await rowIs("commitments", i.commitment_id as string, patch) };
+    }
+    case "delete_item": {
+      const k = DEL[i.kind as string], id = i.id as string;
+      if (k.soft) {
+        let q = db.from(k.table).update({ deleted_at: new Date().toISOString() }).eq("id", id); if (k.extra) q = k.extra(q);
+        const { error } = await q; if (error) fail(error.message);
+        const { data } = await db.from(k.table).select("deleted_at").eq("id", id).maybeSingle();
+        return { type: k.table, ids: [id], verified: !!data?.deleted_at };
+      }
+      const { error: e1 } = await db.from("tasks").update({ recurrence_rule_id: null, occurrence_date: null }).eq("recurrence_rule_id", id); if (e1) fail(e1.message);
+      const { error } = await db.from(k.table).delete().eq("id", id); if (error) fail(error.message);
+      const { data } = await db.from(k.table).select("id").eq("id", id).maybeSingle();
+      return { type: k.table, ids: [id], verified: !data };
+    }
+    case "archive_item": {
+      const k = ARCH[i.kind as string], id = i.id as string;
+      const patch: Json = i.kind === "inbox_item" ? { status: "archived" } : { archived_at: new Date().toISOString() };
+      const { error } = await db.from(k.table).update(patch).eq("id", id); if (error) fail(error.message);
+      const { data } = await db.from(k.table).select(i.kind === "inbox_item" ? "status" : "archived_at").eq("id", id).maybeSingle();
+      return { type: k.table, ids: [id], verified: !!data && Object.values(data as unknown as Json).every((v) => !!v) };
+    }
+    case "pause_recurring": {
+      const { error } = await db.from("recurrence_rules").update({ is_paused: i.paused }).eq("id", i.rule_id as string); if (error) fail(error.message);
+      return { type: "recurrence_rules", ids: [i.rule_id as string], verified: await rowIs("recurrence_rules", i.rule_id as string, { is_paused: i.paused }) };
+    }
+    case "start_timer": return insert("time_entries", { workspace_id: i.workspace_id, task_id: i.task_id ?? null, started_at: new Date().toISOString(), source: "timer" });
+    case "stop_timer": {
+      const { error } = await db.from("time_entries").update({ ended_at: new Date().toISOString() }).eq("id", i.entry_id as string).is("ended_at", null); if (error) fail(error.message);
+      const { data } = await db.from("time_entries").select("ended_at").eq("id", i.entry_id as string).maybeSingle();
+      return { type: "time_entries", ids: [i.entry_id as string], verified: !!data?.ended_at };
+    }
+    case "manage_workspace": {
+      if (i.action === "create") {
+        const { count } = await db.from("workspaces").select("id", { count: "exact", head: true });
+        return insert("workspaces", { name: i.name, sort_order: (count ?? 0) + 1 });
+      }
+      const { error } = await db.from("workspaces").update({ name: i.name }).eq("id", i.workspace_id as string); if (error) fail(error.message);
+      return { type: "workspaces", ids: [i.workspace_id as string], verified: await rowIs("workspaces", i.workspace_id as string, { name: i.name }) };
+    }
+    case "meeting_attendee": {
+      const row = { meeting_id: i.meeting_id, person_id: i.person_id };
+      if (i.action === "add") {
+        const { error } = await db.from("meeting_attendees").insert(row); if (error && error.code !== "23505") fail(error.message);
+      } else { const { error } = await db.from("meeting_attendees").delete().eq("meeting_id", i.meeting_id as string).eq("person_id", i.person_id as string); if (error) fail(error.message); }
+      const { data } = await db.from("meeting_attendees").select("person_id").eq("meeting_id", i.meeting_id as string).eq("person_id", i.person_id as string).maybeSingle();
+      return { type: "meeting_attendees", ids: [i.meeting_id as string], verified: i.action === "add" ? !!data : !data };
     }
     case "bulk_tasks": {
       const picked = i.ids as string[];

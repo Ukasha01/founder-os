@@ -101,6 +101,26 @@ export const TOOLS = {
     params: { description: s("What was promised"), person: s("Person's name"), direction: e(["by_me", "to_me"], "by_me = the user promised them; to_me = they promised the user"), due_date: s(D), follow_up_date: s(D) }, required: ["description", "person", "direction"] },
   complete_commitment: { kind: "write", desc: "Mark a commitment completed.", schema: z.object({ commitment_id: uuid }), params: { commitment_id: s("Commitment id from list_commitments") }, required: ["commitment_id"] },
 
+  // ---------- everything else you can do by hand in the app ----------
+  update_commitment: { kind: "write", desc: "Change a commitment: mark it pending, in progress, completed or cancelled, and/or move its due date or follow-up date.",
+    schema: z.object({ commitment_id: uuid, status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(), due_date: date.optional(), follow_up_date: date.optional() }).refine((v) => v.status || v.due_date || v.follow_up_date, "Nothing to change."),
+    params: { commitment_id: s("Commitment id from list_commitments"), status: e(["pending", "in_progress", "completed", "cancelled"]), due_date: s(D), follow_up_date: s(D) }, required: ["commitment_id"] },
+  delete_item: { kind: "write", confirm: true, desc: "Delete one commitment, calendar event, meeting, goal, person, inbox note or recurring rule. Always needs the user's confirmation.",
+    schema: z.object({ kind: z.enum(["commitment", "event", "meeting", "goal", "person", "inbox_item", "recurring_rule"]), id: uuid }),
+    params: { kind: e(["commitment", "event", "meeting", "goal", "person", "inbox_item", "recurring_rule"]), id: s("Id of the item, from the matching list tool") }, required: ["kind", "id"] },
+  archive_item: { kind: "write", confirm: true, desc: "Archive a habit, KPI, workspace or inbox note (hides it; nothing is destroyed).",
+    schema: z.object({ kind: z.enum(["habit", "kpi", "workspace", "inbox_item"]), id: uuid }),
+    params: { kind: e(["habit", "kpi", "workspace", "inbox_item"]), id: s("Id of the item") }, required: ["kind", "id"] },
+  pause_recurring: { kind: "write", desc: "Pause or resume a recurring task rule.", schema: z.object({ rule_id: uuid, paused: z.boolean() }),
+    params: { rule_id: s("Rule id from list_recurring"), paused: b("true to pause, false to resume") }, required: ["rule_id", "paused"] },
+  start_timer: { kind: "write", desc: "Start the work timer on a task (or on a workspace if no task).", schema: z.object({ task_id: uuid.optional(), workspace: opt(100) }).refine((v) => v.task_id || v.workspace, "Give a task or a workspace."),
+    params: { task_id: s("Task id"), workspace: s("Workspace name, if no task") } },
+  stop_timer: { kind: "write", desc: "Stop the running work timer.", schema: z.object({}), params: {} },
+  manage_workspace: { kind: "write", desc: "Create a workspace, or rename one.", schema: z.object({ action: z.enum(["create", "rename"]), name: txt(100), workspace: opt(100) }).refine((v) => v.action === "create" || v.workspace, "Say which workspace to rename."),
+    params: { action: e(["create", "rename"]), name: s("New name"), workspace: s("Existing workspace name (for rename)") }, required: ["action", "name"] },
+  meeting_attendee: { kind: "write", desc: "Add a person to a meeting, or remove them.", schema: z.object({ meeting_id: uuid, person: txt(200), action: z.enum(["add", "remove"]) }),
+    params: { meeting_id: s("Meeting id from list_meetings"), person: s("Person's name"), action: e(["add", "remove"]) }, required: ["meeting_id", "person", "action"] },
+
   // ---------- calendar, recurring, review, inbox ----------
   create_event: { kind: "write", desc: "Add a calendar event.", schema: z.object({ title: txt(300), start: ldt, end: ldt.optional(), event_type: z.enum(["meeting", "class", "appointment", "time_block", "other"]).optional(), workspace: opt(100) }),
     params: { title: s("Event"), start: s(L), end: s(L), event_type: e(["meeting", "class", "appointment", "time_block", "other"]), workspace: s("Workspace name") }, required: ["title", "start"] },
@@ -129,15 +149,20 @@ export const FUNCTION_DECLARATIONS = (Object.entries(TOOLS) as [ToolName, Spec][
 
 // Token-limited providers get only the tools that fit the request: every read tool, a few common write tools, and the
 // write tools whose topic the message mentions (English, Roman Urdu or Urdu script). Providers with large limits get all.
-const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete"];
+const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete", "delete_item", "update_commitment"];
 const GROUPS: [RegExp, string[]][] = [
   [/\b(log|logged|worked|work|minutes?|mins?|hours?|ghant[ae]|time)\b|گھنٹ|منٹ|کام کیا|وقت/i, ["log_time"]],
   [/goal|milestone|target|objective|مقصد|ہدف|گول/i, ["create_goal", "add_milestone", "update_milestone", "set_goal_status"]],
   [/habit|namaz|salah|prayer|quran|exercise|workout|gym|run|streak|عادت|نماز|قرآن|ورزش|جم/i, ["create_habit", "log_habit"]],
   [/kpi|sales|revenue|orders?|metric|users?|signups?|سیل|آرڈر|بکری/i, ["create_kpi", "record_kpi"]],
-  [/person|people|contact|promise|promised|commit|وعدہ|وعدے|بندہ|شخص/i, ["create_person", "create_commitment", "complete_commitment"]],
+  [/person|people|contact|promise|promised|commit|وعدہ|وعدے|بندہ|شخص/i, ["create_person", "create_commitment", "complete_commitment", "update_commitment", "meeting_attendee"]],
   [/meeting|call|zoom|میٹنگ|ملاقات|کال/i, ["create_meeting", "update_meeting"]],
   [/event|class|lecture|schedule|calendar|every|daily|weekly|monthly|recurring|roz|har\b|کلاس|ہر |روز|ہفتے|شیڈیول/i, ["create_event", "create_recurring_task"]],
+  [/timer|stopwatch|ٹائمر/i, ["start_timer", "stop_timer"]],
+  [/pause|resume|recurring|repeat|روک|دوبارہ شروع/i, ["pause_recurring"]],
+  [/workspace|rename|ورک ?اسپیس|نام/i, ["manage_workspace", "archive_item"]],
+  [/archive|hide|آرکائیو|چھپا/i, ["archive_item"]],
+  [/attendee|invite|add .* to .*meeting|شامل/i, ["meeting_attendee"]],
   [/review|wins?|blockers?|reflect|ریویو|جائزہ/i, ["save_daily_review"]],
   [/\bmove\b|workspace|shift|منتقل/i, ["move_task"]],
 ];
@@ -166,7 +191,7 @@ LANGUAGE: he mixes Urdu and English. Understand Urdu script, Roman Urdu and Engl
 Reply in the language he used. If he wrote or spoke Urdu or Roman Urdu, reply in natural, simple, spoken Pakistani Urdu written in Urdu script (not Hindi words, not stiff or bookish Urdu). Keep task names, app words and technical terms in English letters, as he says them. Write numbers as digits.
 If INPUT MODE is voice, your reply is read aloud: at most two or three short sentences, no lists, no markdown, no emojis, no ids. If he only said a short command like stop, thanks or okay, answer in a few words.
 FACTS: the context below already lists his open tasks, today's schedule and Inbox. If the answer is there, answer at once without calling a tool. For anything else about his data (details, history, performance, other lists, search), call the read tools first, in ONE turn together when you need several. Never guess numbers or ids. Quote the figures the tools return.
-ACTIONS: write tools only PROPOSE a change; the app shows the user exactly what will happen, asks him to confirm, and tells him when it is done. So call the tool and keep your own text to at most one short line. Never claim something is done and never say you cannot delete: you can.
+ACTIONS: write tools only PROPOSE a change; the app shows the user exactly what will happen, asks him to confirm, and tells him when it is done. So call the tool and keep your own text to at most one short line. Never claim something is done. You can do everything the user can do by hand in the app: tasks, goals, habits, KPIs, people, meetings, commitments, calendar events, recurring tasks, timers, workspaces, inbox, reviews, including deleting, archiving and changing status. Never say you cannot do something without first checking your tools; if a tool fits, call it. If a needed tool really is missing, say exactly which action you lack in one short sentence.
 MANY TASKS: to delete, complete or cancel several tasks that share a title, call bulk_tasks ONCE (action plus the title and, if he named one, the workspace). Never repeat delete_task for each one. If he says undo, wapas or that a deletion was a mistake, call undo_last_delete.
 Use ids exactly as returned by read tools or the context. If the task or item is not found, ask one short question or use add_to_inbox.
 Resolve relative dates ("tomorrow", "Friday") from TODAY in the context. Dates are YYYY-MM-DD; date-times are local YYYY-MM-DDTHH:mm.
