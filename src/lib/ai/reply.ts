@@ -41,3 +41,13 @@ export function composeReply(o: ReplyInput): string {
   if (parts.length) return parts.join(" ");
   return stripMarkdown(o.modelText);   // a plain answer or a question: the model's own words
 }
+
+// Long answers (lists of tasks) are shown in full but only the first sentences are read aloud, cut at a sentence end,
+// so the voice is short and never stops mid-word.
+export function forSpeech(text: string, max = 260): string {
+  const flat = text.replace(/\s*\n+\s*/g, ". ").replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("۔"), cut.lastIndexOf("? "), cut.lastIndexOf("! "), cut.lastIndexOf("؟"));
+  return (end > 80 ? cut.slice(0, end + 1) : cut.slice(0, cut.lastIndexOf(" "))).trim();
+}

@@ -166,7 +166,7 @@ test("speech-to-text provider order", () => {
   assert.deepEqual(sttOrder({ GROQ_API_KEY: "q", STT_PROVIDER: "gemini" }), ["groq"]);
 });
 
-import { composeReply, localize, stripMarkdown } from "../../src/lib/ai/reply.ts";
+import { composeReply, localize, stripMarkdown, forSpeech } from "../../src/lib/ai/reply.ts";
 test("yes/no decisions: tolerant of fillers, strict about new requests", () => {
   for (const s of ["yes haan", "haan ji", "ji kar do", "bilkul", "ہاں", "ہاں بھائی کر دو", "ok do it".replace("it", "kar"), "yes please"]) assert.equal(classifyDecision(s), "yes", s);
   for (const s of ["nahi", "nahi nahi", "نہیں", "no", "mat karo", "cancel"]) assert.equal(classifyDecision(s), "no", s);
@@ -248,4 +248,10 @@ test("voice order: ElevenLabs first, Microsoft free voice next, Gemini last; swi
   assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_EDGE: "off" }), ["elevenlabs"]);
   assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_PROVIDER: "off" }), []);
   assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g", TTS_PROVIDER: "gemini" }), ["gemini", "elevenlabs", "edge"]);
+});
+test("spoken text is short and ends at a sentence", () => {
+  const long = Array.from({ length: 12 }, (_, i) => `Task number ${i + 1} is due soon.`).join("\n");
+  const out = forSpeech(long);
+  assert.ok(out.length <= 260 && out.endsWith("."), out);
+  assert.equal(forSpeech("Short one."), "Short one.");
 });

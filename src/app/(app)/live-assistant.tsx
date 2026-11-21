@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Vad } from "@/lib/vad";
 import { downsample, floatToInt16, int16ToBytes, pcm16ToWav, rms } from "@/lib/wav";
 import { isEcho } from "@/lib/ai/lang";
+import { forSpeech } from "@/lib/ai/reply";
 import { classifyCommand } from "@/lib/voice-commands";
 import { MESSAGES, classifyMicProbe, micPermissionState, permissionsPolicyAllowsMic } from "@/lib/voice";
 
@@ -113,7 +114,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
         try { await playBuffer(await cur, token); }
         catch (e) {
           const why = e instanceof Error ? e.message : "";
-          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? (/limit/i.test(why) ? "سرور کی مفت آواز کی روزانہ حد ختم ہو گئی ہے اور اس براؤزر میں اردو آواز نہیں ہے۔ جواب لکھا ہوا دکھایا جا رہا ہے۔ Microsoft Edge میں ایپ کھولیں تو اردو آواز مل سکتی ہے۔" : `اس براؤزر میں اردو آواز نہیں ہے اور سرور کی آواز بھی نہیں چلی (${why})۔ Microsoft Edge میں ایپ کھول کر دیکھیں۔`) : `Voice is unavailable (${why}); showing text only.`); }
+          if (token === s.speakToken && !s.noUrduVoiceWarned) { s.noUrduVoiceWarned = true; setNotice(urdu ? `اردو آواز نہیں چل سکی۔ جواب لکھا ہوا دکھایا جا رہا ہے۔ وجہ: ${why}` : `Voice is unavailable (${why}); showing text only.`); }
           break;
         }
       }
@@ -155,7 +156,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
       const out = j.reply ?? "";
       setReply(out); s.lastReply = out;
       if (stale() || !out) return set("listening");   // you started talking again while I was thinking: do not talk over you
-      await speak(out);
+      await speak(forSpeech(out));
     } catch { setNotice("Could not reach the assistant. Check your connection."); set("listening"); }
   }, [router, set, speak, stopSpeaking]);
 

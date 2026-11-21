@@ -186,8 +186,16 @@ async function ttsEleven(text: string): Promise<TtsResult> {
       body: JSON.stringify({ text, model_id: model }),
       signal: AbortSignal.timeout(25000),
     });
-    if (res.status === 429 || res.status === 402) return { ok: false, reason: "quota", message: "ElevenLabs' free characters are used up." };
-    if (!res.ok) return { ok: false, reason: "unavailable", message: `ElevenLabs is unavailable (HTTP ${res.status}).` };
+    if (!res.ok) {
+      // Say what ElevenLabs actually answered. HTTP 429/402 are NOT always "free characters used up" (it can also be a plan
+      // restriction on the chosen voice, or too many requests at once), so the label is taken from the response body.
+      const raw = await res.text().catch(() => "");
+      let detail = raw.slice(0, 160);
+      try { const j = JSON.parse(raw) as { detail?: { status?: string; message?: string } | string }; detail = typeof j.detail === "string" ? j.detail : `${j.detail?.status ?? ""} ${j.detail?.message ?? ""}`.trim() || detail; } catch { /* keep raw text */ }
+      console.error(`[tts] elevenlabs HTTP ${res.status}: ${detail}`);
+      const quota = /quota|credit|character/i.test(detail);
+      return { ok: false, reason: quota ? "quota" : "unavailable", message: `ElevenLabs HTTP ${res.status}: ${detail || "no details"}` };
+    }
     return { ok: true, bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/mpeg", provider: "elevenlabs" };
   } catch {
     return { ok: false, reason: "unavailable", message: "Could not reach ElevenLabs (timeout or network)." };
@@ -208,8 +216,10 @@ async function ttsEdge(text: string): Promise<TtsResult> {
     const bytes = new Uint8Array(await result.audio.arrayBuffer());
     if (!bytes.length) return { ok: false, reason: "unavailable", message: "Microsoft voice returned no audio." };
     return { ok: true, bytes, mime: "audio/mpeg", provider: "edge" };
-  } catch {
-    return { ok: false, reason: "unavailable", message: "Microsoft voice is unavailable right now." };
+  } catch (e) {
+    const why = e instanceof Error ? e.message.slice(0, 120) : "unknown";
+    console.error(`[tts] microsoft voice failed: ${why}`);
+    return { ok: false, reason: "unavailable", message: `Microsoft voice failed: ${why}` };
   }
 }
 
@@ -229,11 +239,11 @@ export async function synthesize(text: string): Promise<TtsResult> {
   if (!t) return { ok: false, reason: "unavailable", message: "Nothing to say." };
   const order = ttsOrder(process.env);
   if (!order.length) return { ok: false, reason: "not_configured", message: "No voice provider is configured." };
-  let last: TtsResult | null = null;
+  const failures: string[] = []; let reason: "quota" | "unavailable" = "unavailable";
   for (const p of order) {
     const r = p === "elevenlabs" ? await ttsEleven(t) : p === "edge" ? await ttsEdge(t) : await ttsGemini(t);
     if (r.ok) return r;
-    last = !last || r.reason === "quota" ? r : last;
+    failures.push(r.message); if (r.reason === "quota") reason = "quota";
   }
-  return last!;
+  return { ok: false, reason, message: failures.join(" | ") };
 }
