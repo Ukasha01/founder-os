@@ -62,3 +62,9 @@ export async function sendTestNotification(): Promise<{ ok: boolean; error?: str
   const { error } = await supabase.from("reminders").insert({ title: "Test notification", body: "If you can see this on your phone or laptop, reminders work.", remind_at: new Date().toISOString(), kind: "custom", channels: ["in_app", "push"], dedupe_key: `test:${Date.now()}` });
   return error ? { ok: false, error: error.message } : { ok: true, devices: count ?? 0 };
 }
+
+export async function listPushDevices(): Promise<{ label: string; received: string | null; sent: string | null }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("push_subscriptions").select("device_label, last_received_at, last_used_at").order("created_at");
+  return (data ?? []).map((d) => ({ label: /Android|iPhone|Mobile/i.test(d.device_label ?? "") ? "Phone" : "Laptop/computer", received: d.last_received_at, sent: d.last_used_at }));
+}

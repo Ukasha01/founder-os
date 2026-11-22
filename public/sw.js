@@ -22,7 +22,7 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch { d = {}; }
-  event.waitUntil(self.registration.showNotification(d.title || "Founder OS", { body: d.body || "", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", vibrate: [250, 120, 250, 120, 250], tag: "fos-" + Date.now(), renotify: true, requireInteraction: true, timestamp: Date.now(), data: { url: d.url || "/" } }));
+  event.waitUntil(Promise.all([self.registration.pushManager.getSubscription().then((sub) => sub && fetch("/api/push/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }), keepalive: true })).catch(() => undefined), self.registration.showNotification(d.title || "Founder OS", { body: d.body || "", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", vibrate: [250, 120, 250, 120, 250], tag: "fos-" + Date.now(), renotify: true, requireInteraction: true, timestamp: Date.now(), data: { url: d.url || "/" } })]));
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

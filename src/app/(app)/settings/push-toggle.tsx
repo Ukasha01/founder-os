@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { savePushSubscription, removePushSubscription, sendTestNotification } from "./actions";
+import { savePushSubscription, removePushSubscription, sendTestNotification, listPushDevices } from "./actions";
 
 const b64ToBytes = (s: string) => {
   const pad = "=".repeat((4 - (s.length % 4)) % 4);
@@ -57,7 +57,8 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
         {state === "on" ? "Turn off notifications on this device" : "Turn on notifications on this device"}
       </button>
       {state === "on" && (
-        <button onClick={async () => { setMsg("Sending..."); const r = await sendTestNotification(); setMsg(r.ok ? (r.devices ? `Test queued for ${r.devices} device(s). It should arrive within a minute.` : "No device is registered yet. Turn notifications off and on again on this device.") : (r.error ?? "Could not queue the test.")); }} className="ml-2 inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-semibold">Send test notification</button>
+        <button onClick={async () => { setMsg("Sending..."); const r = await sendTestNotification(); if (r.ok) setTimeout(async () => { const d = await listPushDevices(); const t = new Date(Date.now() - 150_000).toISOString(); setMsg(d.map((x) => `${x.label}: ${x.received && x.received > t ? "received it" : "did NOT receive it"}`).join(" | ")); }, 75_000);
+          setMsg(r.ok ? (r.devices ? `Test queued for ${r.devices} device(s). It should arrive within a minute.` : "No device is registered yet. Turn notifications off and on again on this device.") : (r.error ?? "Could not queue the test.")); }} className="ml-2 inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-semibold">Send test notification</button>
       )}
       {msg && <p role="alert" className="mt-2 text-sm text-rose-800">{msg}</p>}
     </div>
