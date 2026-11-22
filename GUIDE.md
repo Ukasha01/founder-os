@@ -97,3 +97,9 @@ Some phones (Xiaomi/MIUI) block browser push while idle. Telegram is a second ch
 2. In Vercel > Project > Settings > Environment Variables add `TELEGRAM_BOT_TOKEN` (value = that token), then redeploy.
 3. Founder OS > Settings > Telegram backup > Connect. Open your bot in Telegram, press Start, send the 8-character code. Press "Send test".
 Every reminder is then sent to Telegram as well as to browsers.
+
+## Email backup for reminders (works without a VPN)
+1. Create a free account at resend.com using the same email you log in to Founder OS with.
+2. Resend > API Keys > Create API Key (sending access). Copy it.
+3. Vercel > Settings > Environment Variables: add `RESEND_API_KEY`, then redeploy.
+4. Founder OS > Settings > Email backup > Send test email. Reminders you set, meetings and timed tasks are then emailed too (daily summaries are not).

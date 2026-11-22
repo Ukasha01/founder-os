@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { telegramStatus, startTelegramLink, disconnectTelegram, testTelegram } from "./actions";
+import { telegramStatus, startTelegramLink, disconnectTelegram, testTelegram, sendTestEmail } from "./actions";
 
 const btn = "inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-semibold";
 export function TelegramLink() {
@@ -26,6 +26,16 @@ export function TelegramLink() {
       <button className={btn} onClick={async () => { setMsg(""); const r = await startTelegramLink(); if (r.ok && r.code) setCode({ code: r.code, bot: r.bot }); else setMsg(r.error ?? "Could not start."); }}>Connect Telegram</button>
       {code && <p className="mt-2 text-sm">Open Telegram, find <b>@{code.bot ?? "your bot"}</b>, press Start, then send this code: <b className="font-mono tracking-widest">{code.code}</b>. This page updates by itself when connected (code valid 30 minutes).</p>}
       {msg && <p role="alert" className="mt-2 text-sm text-rose-800">{msg}</p>}
+    </div>
+  );
+}
+
+export function EmailBackup() {
+  const [msg, setMsg] = useState("");
+  return (
+    <div>
+      <button className={btn} onClick={async () => { setMsg("Sending..."); const r = await sendTestEmail(); setMsg(r.ok ? `Sent to ${r.to}. Check Gmail on your phone.` : (r.error ?? "Failed.")); }}>Send test email</button>
+      {msg && <p role="status" className="mt-2 text-sm">{msg}</p>}
     </div>
   );
 }

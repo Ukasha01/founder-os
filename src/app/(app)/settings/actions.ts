@@ -103,3 +103,13 @@ export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
   const r = await tgSend(Number(data.chat_id), "Test from Founder OS: if you see this, backup reminders work.");
   return r.ok ? { ok: true } : { ok: false, error: r.description ?? "Telegram refused the message." };
 }
+
+export async function sendTestEmail(): Promise<{ ok: boolean; error?: string; to?: string }> {
+  const { emailOn, sendEmail } = await import("@/lib/email");
+  if (!emailOn()) return { ok: false, error: "RESEND_API_KEY is not set in Vercel yet." };
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const to = process.env.REMINDER_EMAIL_TO || data.user?.email; if (!to) return { ok: false, error: "No email address on your account." };
+  const r = await sendEmail(to, "Founder OS test reminder", "If this reached your phone, email reminders work.");
+  return r.ok ? { ok: true, to } : { ok: false, error: r.error };
+}

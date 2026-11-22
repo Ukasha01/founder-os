@@ -280,3 +280,11 @@ test("telegram link code parsing and webhook secret", async () => {
   assert.equal(parseLinkCode("hello"), null);
   assert.equal(tgSecret("t").length, 48); assert.notEqual(tgSecret("a"), tgSecret("b"));
 });
+
+test("email backup skips daily summaries but sends real reminders", async () => {
+  const { worthEmailing } = await import("../../src/lib/email.ts");
+  assert.equal(worthEmailing("custom", "Check my Gmail"), true);
+  assert.equal(worthEmailing("deadline", "Due now: Report"), true);
+  assert.equal(worthEmailing("deadline", "4 overdue"), false);
+  assert.equal(worthEmailing("commitment", "Follow up: x"), false);
+});

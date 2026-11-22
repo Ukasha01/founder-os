@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { planReminders, nextStatus, type Draft } from "@/lib/reminders";
 import { dateInTz, zonedToUtc } from "@/lib/time";
 import { tgSend, tgToken } from "@/lib/telegram";
+import { emailOn, sendEmail, worthEmailing } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -92,6 +93,10 @@ export async function GET(req: NextRequest) {
     if (delivered && tgToken() && r.attempts === 0) {
       const { data: tg } = await db.from("telegram_links").select("chat_id").eq("owner_id", r.owner_id).not("chat_id", "is", null).maybeSingle();
       if (tg?.chat_id) { const t = await tgSend(Number(tg.chat_id), `${r.title}${r.body ? `\n${r.body}` : ""}`); if (t.ok) stats.telegram_sent = (stats.telegram_sent ?? 0) + 1; }
+    }
+    if (delivered && emailOn() && r.attempts === 0 && worthEmailing(r.kind, r.title)) {
+      const to = process.env.REMINDER_EMAIL_TO || (await db.auth.admin.getUserById(r.owner_id)).data.user?.email;
+      if (to) { const m = await sendEmail(to, `Reminder: ${r.title}`, `${r.title}${r.body ? `\n${r.body}` : ""}\n\nOpen Founder OS: ${process.env.NEXT_PUBLIC_SITE_URL ?? ""}${link}`); if (m.ok) stats.email_sent = (stats.email_sent ?? 0) + 1; else console.error(`[reminder email] ${m.error}`); }
     }
     const status = nextStatus(r.attempts, delivered);
     if (status === "failed") stats.failed++;
