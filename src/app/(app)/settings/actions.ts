@@ -51,7 +51,10 @@ export async function removePushSubscription(endpoint: string): Promise<{ ok: bo
 
 export async function markNotificationsRead() {
   const supabase = await createClient();
+  const { data: unread } = await supabase.from("notifications").select("reminder_id").is("read_at", null).not("reminder_id", "is", null);
   await supabase.from("notifications").update({ read_at: new Date().toISOString() }).is("read_at", null);
+  const ids = (unread ?? []).map((n) => n.reminder_id as string);
+  if (ids.length) await supabase.from("reminders").update({ acked_at: new Date().toISOString(), next_nag_at: null }).in("id", ids).is("acked_at", null);   // reading it in the app stops the repeats
   revalidatePath("/", "layout");
 }
 

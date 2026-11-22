@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { planReminders, nextStatus, type Draft } from "@/lib/reminders";
+import { planReminders, nextStatus, naggable, nextNagAt, NAG_MINUTES, type Draft } from "@/lib/reminders";
 import { dateInTz, zonedToUtc } from "@/lib/time";
 import { tgSend, tgToken } from "@/lib/telegram";
 import { emailOn, sendEmail, worthEmailing } from "@/lib/email";
@@ -63,6 +63,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  type Payload = { title: string; body: string; url: string; rid: string; nag?: number };
+  const pushAll = async (ownerId: string, payload: Payload): Promise<string | null> => {
+    let err: string | null = null;
+    const { data: subs } = await db.from("push_subscriptions").select("id, endpoint, p256dh, auth_secret").eq("owner_id", ownerId);
+    for (const s of subs ?? []) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_secret } }, JSON.stringify(payload), { TTL: 900, urgency: "high" });
+        stats.push_sent++;
+        await db.from("push_subscriptions").update({ last_used_at: now.toISOString() }).eq("id", s.id);
+      } catch (e) {
+        const code = (e as { statusCode?: number }).statusCode;
+        if (code === 404 || code === 410) await db.from("push_subscriptions").delete().eq("id", s.id); // device unsubscribed
+        else err = `push: ${code ?? "error"}`; // in-app copy is already delivered
+      }
+    }
+    return err;
+  };
+  const backups = async (ownerId: string, title: string, body: string | null, link: string, email: boolean) => {
+    if (tgToken()) {
+      const { data: tg } = await db.from("telegram_links").select("chat_id").eq("owner_id", ownerId).not("chat_id", "is", null).maybeSingle();
+      if (tg?.chat_id) { const t = await tgSend(Number(tg.chat_id), `${title}${body ? `\n${body}` : ""}`); if (t.ok) stats.telegram_sent = (stats.telegram_sent ?? 0) + 1; }
+    }
+    if (email && emailOn()) {
+      const to = process.env.REMINDER_EMAIL_TO || (await db.auth.admin.getUserById(ownerId)).data.user?.email;
+      if (to) { const m = await sendEmail(to, `Reminder: ${title}`, `${title}${body ? `\n${body}` : ""}\n\nOpen Founder OS: ${process.env.NEXT_PUBLIC_SITE_URL ?? ""}${link}`); if (m.ok) stats.email_sent = (stats.email_sent ?? 0) + 1; else console.error(`[reminder email] ${m.error}`); }
+    }
+  };
+
   // 2) Deliver: everything pending and due.
   const { data: due } = await db.from("reminders").select("id, owner_id, title, body, kind, channels, attempts, task_id, meeting_id, commitment_id, event_id")
     .eq("status", "pending").lte("remind_at", now.toISOString()).order("remind_at").limit(100);
@@ -75,32 +103,26 @@ export async function GET(req: NextRequest) {
       const { error } = await db.from("notifications").insert({ owner_id: r.owner_id, reminder_id: r.id, kind: r.kind, title: r.title, body: r.body, link });
       if (error) lastError = error.message; else { delivered = true; stats.delivered++; }
     }
-    if (delivered && pushOn && (r.channels as string[]).includes("push")) {
-      const { data: subs } = await db.from("push_subscriptions").select("id, endpoint, p256dh, auth_secret").eq("owner_id", r.owner_id);
-      for (const s of subs ?? []) {
-        try {
-          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_secret } }, JSON.stringify({ title: r.title, body: r.body ?? "", url: link }), { TTL: 900, urgency: "high" });
-          stats.push_sent++;
-          await db.from("push_subscriptions").update({ last_used_at: now.toISOString() }).eq("id", s.id);
-        } catch (e) {
-          const code = (e as { statusCode?: number }).statusCode;
-          if (code === 404 || code === 410) await db.from("push_subscriptions").delete().eq("id", s.id); // device unsubscribed
-          else lastError = `push: ${code ?? "error"}`; // in-app copy is already delivered
-        }
-      }
-    }
-    // Backup channel: Telegram reaches a locked phone even when the phone maker blocks browser push.
-    if (delivered && tgToken() && r.attempts === 0) {
-      const { data: tg } = await db.from("telegram_links").select("chat_id").eq("owner_id", r.owner_id).not("chat_id", "is", null).maybeSingle();
-      if (tg?.chat_id) { const t = await tgSend(Number(tg.chat_id), `${r.title}${r.body ? `\n${r.body}` : ""}`); if (t.ok) stats.telegram_sent = (stats.telegram_sent ?? 0) + 1; }
-    }
-    if (delivered && emailOn() && r.attempts === 0 && worthEmailing(r.kind, r.title)) {
-      const to = process.env.REMINDER_EMAIL_TO || (await db.auth.admin.getUserById(r.owner_id)).data.user?.email;
-      if (to) { const m = await sendEmail(to, `Reminder: ${r.title}`, `${r.title}${r.body ? `\n${r.body}` : ""}\n\nOpen Founder OS: ${process.env.NEXT_PUBLIC_SITE_URL ?? ""}${link}`); if (m.ok) stats.email_sent = (stats.email_sent ?? 0) + 1; else console.error(`[reminder email] ${m.error}`); }
-    }
+    if (delivered && pushOn && (r.channels as string[]).includes("push")) lastError = (await pushAll(r.owner_id, { title: r.title, body: r.body ?? "", url: link, rid: r.id })) ?? lastError;
+    // Backup channels reach a locked phone even when the phone maker blocks browser push (email only for reminders that matter).
+    if (delivered && r.attempts === 0) await backups(r.owner_id, r.title, r.body, link, worthEmailing(r.kind, r.title));
     const status = nextStatus(r.attempts, delivered);
     if (status === "failed") stats.failed++;
-    await db.from("reminders").update({ status, attempts: r.attempts + 1, last_error: lastError, sent_at: delivered ? now.toISOString() : null }).eq("id", r.id);
+    const first = delivered ? nextNagAt(now, 0) : null;
+    await db.from("reminders").update({ status, attempts: r.attempts + 1, last_error: lastError, sent_at: delivered ? now.toISOString() : null, ...(delivered && r.attempts === 0 && naggable(r.kind, r.title) && first ? { next_nag_at: first.toISOString() } : {}) }).eq("id", r.id);
+  }
+
+  // 3) Nag: an important reminder nobody has acknowledged is sent again, and from the first repeat it is also emailed.
+  const { data: nags } = await db.from("reminders").select("id, owner_id, title, body, kind, nag_count, task_id, meeting_id, commitment_id, event_id")
+    .eq("status", "sent").is("acked_at", null).not("next_nag_at", "is", null).lte("next_nag_at", now.toISOString()).lt("nag_count", NAG_MINUTES.length).limit(50);
+  for (const r of nags ?? []) {
+    const link = r.meeting_id ? `/meetings/${r.meeting_id}` : r.event_id ? "/calendar" : r.task_id ? `/tasks/${r.task_id}` : r.commitment_id ? "/commitments" : "/";
+    const title = `Still pending: ${r.title}`;
+    if (pushOn) await pushAll(r.owner_id, { title, body: r.body ?? "Tap Done when handled, or Snooze.", url: link, rid: r.id, nag: r.nag_count + 1 });
+    await backups(r.owner_id, title, r.body, link, r.nag_count === 1);   // email once more on the second repeat, not on every one
+    const nxt = nextNagAt(now, r.nag_count + 1);
+    await db.from("reminders").update({ nag_count: r.nag_count + 1, next_nag_at: nxt ? nxt.toISOString() : null }).eq("id", r.id);
+    stats.nagged = (stats.nagged ?? 0) + 1;
   }
   return NextResponse.json({ ok: true, push_configured: pushOn, ...stats });
 }

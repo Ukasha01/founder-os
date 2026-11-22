@@ -288,3 +288,12 @@ test("email backup skips daily summaries but sends real reminders", async () => 
   assert.equal(worthEmailing("deadline", "4 overdue"), false);
   assert.equal(worthEmailing("commitment", "Follow up: x"), false);
 });
+
+test("nag schedule: 3, 5, 10, 15 minutes then stops; summaries are never repeated", async () => {
+  const { nextNagAt, naggable, NAG_MINUTES } = await import("../../src/lib/reminders.ts");
+  const t = new Date("2026-11-22T10:00:00Z");
+  assert.equal(nextNagAt(t, 0)!.toISOString(), "2026-11-22T10:03:00.000Z");
+  assert.equal(nextNagAt(t, 3)!.toISOString(), "2026-11-22T10:15:00.000Z");
+  assert.equal(nextNagAt(t, NAG_MINUTES.length), null);
+  assert.equal(naggable("custom", "x"), true); assert.equal(naggable("deadline", "Due now: x"), true); assert.equal(naggable("deadline", "4 overdue"), false);
+});

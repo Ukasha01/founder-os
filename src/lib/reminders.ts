@@ -50,3 +50,11 @@ export function planReminders(i: PlanInput): Draft[] {
 // Retry policy for delivery: three tries, then give up and say why.
 export const MAX_ATTEMPTS = 3;
 export const nextStatus = (attempts: number, delivered: boolean): "sent" | "pending" | "failed" => delivered ? "sent" : attempts + 1 >= MAX_ATTEMPTS ? "failed" : "pending";
+
+// Reminders that matter are repeated until acknowledged (Done, a tap on the notification, or reading it in the app):
+// 3, 5, 10 and 15 minutes after the first alert. Daily summaries are never repeated.
+export const NAG_MINUTES = [3, 5, 10, 15];
+export const naggable = (kind: string, title: string) => kind === "custom" || kind === "meeting" || kind === "follow_up" || /^Due now/i.test(title);
+export function nextNagAt(from: Date, nagCount: number): Date | null {
+  const m = NAG_MINUTES[nagCount]; return m === undefined ? null : new Date(from.getTime() + m * 60_000);
+}

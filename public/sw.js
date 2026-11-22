@@ -22,10 +22,14 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch { d = {}; }
-  event.waitUntil(Promise.all([self.registration.pushManager.getSubscription().then((sub) => sub && fetch("/api/push/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }), keepalive: true })).catch(() => undefined), self.registration.showNotification(d.title || "Founder OS", { body: d.body || "", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", vibrate: [250, 120, 250, 120, 250], tag: "fos-" + Date.now(), renotify: true, requireInteraction: true, timestamp: Date.now(), data: { url: d.url || "/" } })]));
+  event.waitUntil(Promise.all([self.registration.pushManager.getSubscription().then((sub) => sub && fetch("/api/push/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }), keepalive: true })).catch(() => undefined), self.registration.showNotification(d.title || "Founder OS", { body: d.body || "", icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", vibrate: [250, 120, 250, 120, 250], tag: "fos-" + Date.now(), renotify: true, requireInteraction: true, timestamp: Date.now(), actions: d.rid ? [{ action: "done", title: "Done" }, { action: "snooze", title: "Snooze 10 min" }] : [], data: { url: d.url || "/", rid: d.rid || null } })]));
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const rid = event.notification.data && event.notification.data.rid;
+  const ack = rid ? fetch("/api/reminders/ack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: rid, action: event.action === "snooze" ? "snooze" : "done" }) }).catch(() => undefined) : Promise.resolve();
+  if (event.action === "done" || event.action === "snooze") { event.waitUntil(ack); return; }   // buttons act without opening the app
+  event.waitUntil(ack);
   const url = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(self.clients.matchAll({ type: "window" }).then((list) => {
     for (const c of list) { if ("focus" in c) { c.navigate(url); return c.focus(); } }
