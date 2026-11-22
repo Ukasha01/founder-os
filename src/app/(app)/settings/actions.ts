@@ -68,3 +68,38 @@ export async function listPushDevices(): Promise<{ label: string; received: stri
   const { data } = await supabase.from("push_subscriptions").select("device_label, last_received_at, last_used_at").order("created_at");
   return (data ?? []).map((d) => ({ label: /Android|iPhone|Mobile/i.test(d.device_label ?? "") ? "Phone" : "Laptop/computer", received: d.last_received_at, sent: d.last_used_at }));
 }
+
+// ---- Telegram backup channel ----
+import { randomBytes } from "node:crypto";
+import { tgCall, tgSecret, tgSend, tgToken } from "@/lib/telegram";
+import { headers } from "next/headers";
+
+export async function telegramStatus(): Promise<{ configured: boolean; linked: boolean }> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("telegram_links").select("chat_id").maybeSingle();
+  return { configured: !!tgToken(), linked: !!data?.chat_id };
+}
+export async function startTelegramLink(): Promise<{ ok: boolean; error?: string; code?: string; bot?: string }> {
+  const token = tgToken(); if (!token) return { ok: false, error: "TELEGRAM_BOT_TOKEN is not set in Vercel yet." };
+  const supabase = await createClient();
+  const { data: u } = await supabase.auth.getClaims(); if (!u?.claims) return { ok: false, error: "Not signed in." };
+  const me = await tgCall<{ username?: string }>("getMe"); if (!me.ok) return { ok: false, error: `Telegram says: ${me.description ?? "bot token rejected"}` };
+  const h = await headers(); const host = h.get("x-forwarded-host") ?? h.get("host");
+  const hook = await tgCall("setWebhook", { url: `https://${host}/api/telegram/webhook`, secret_token: tgSecret(token), allowed_updates: ["message"] });
+  if (!hook.ok) return { ok: false, error: `Could not connect the bot: ${hook.description}` };
+  const code = randomBytes(5).toString("hex").slice(0, 8).toUpperCase();
+  const { error } = await supabase.from("telegram_links").upsert({ owner_id: u.claims.sub, link_code: code, chat_id: null, created_at: new Date().toISOString(), linked_at: null }, { onConflict: "owner_id" });
+  return error ? { ok: false, error: error.message } : { ok: true, code, bot: me.result?.username };
+}
+export async function disconnectTelegram(): Promise<{ ok: boolean }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("telegram_links").delete().not("owner_id", "is", null);
+  return { ok: !error };
+}
+export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("telegram_links").select("chat_id").maybeSingle();
+  if (!data?.chat_id) return { ok: false, error: "Telegram is not connected." };
+  const r = await tgSend(Number(data.chat_id), "Test from Founder OS: if you see this, backup reminders work.");
+  return r.ok ? { ok: true } : { ok: false, error: r.description ?? "Telegram refused the message." };
+}

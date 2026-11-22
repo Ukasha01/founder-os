@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { planReminders, nextStatus, type Draft } from "@/lib/reminders";
 import { dateInTz, zonedToUtc } from "@/lib/time";
+import { tgSend, tgToken } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   if (pushOn) webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@example.com", pub!, priv!);
 
   const now = new Date();
-  const stats = { created: 0, delivered: 0, push_sent: 0, failed: 0 };
+  const stats: Record<string, number> = { created: 0, delivered: 0, push_sent: 0, failed: 0 };
   const { data: users } = await db.from("user_settings").select("owner_id, timezone");
 
   // 1) Plan: what deserves a reminder right now.
@@ -86,6 +87,11 @@ export async function GET(req: NextRequest) {
           else lastError = `push: ${code ?? "error"}`; // in-app copy is already delivered
         }
       }
+    }
+    // Backup channel: Telegram reaches a locked phone even when the phone maker blocks browser push.
+    if (delivered && tgToken() && r.attempts === 0) {
+      const { data: tg } = await db.from("telegram_links").select("chat_id").eq("owner_id", r.owner_id).not("chat_id", "is", null).maybeSingle();
+      if (tg?.chat_id) { const t = await tgSend(Number(tg.chat_id), `${r.title}${r.body ? `\n${r.body}` : ""}`); if (t.ok) stats.telegram_sent = (stats.telegram_sent ?? 0) + 1; }
     }
     const status = nextStatus(r.attempts, delivered);
     if (status === "failed") stats.failed++;

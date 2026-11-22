@@ -272,3 +272,11 @@ test("ElevenLabs: Urdu uses v3, English uses flash; env overrides win", () => {
   assert.equal(elevenSettings({ ELEVENLABS_VOICE_ID_UR: "abc" }, true).voice, "abc");
   assert.equal(elevenSettings({ ELEVENLABS_MODEL_UR: "m" }, true).model, "m");
 });
+
+test("telegram link code parsing and webhook secret", async () => {
+  const { parseLinkCode, tgSecret } = await import("../../src/lib/telegram.ts");
+  assert.equal(parseLinkCode("/start ab12cd34"), "AB12CD34");
+  assert.equal(parseLinkCode("AB12CD34"), "AB12CD34");
+  assert.equal(parseLinkCode("hello"), null);
+  assert.equal(tgSecret("t").length, 48); assert.notEqual(tgSecret("a"), tgSecret("b"));
+});

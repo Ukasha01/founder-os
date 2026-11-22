@@ -90,3 +90,10 @@ Replies are spoken by (1) the browser's own Urdu voice if it has one (Edge, most
 - Open `/api/voice/diag` (signed in) to see the models/voices in use and LLM timings; add `?speak=1` to also time real speech (uses ~50 ElevenLabs characters).
 - Browser console shows `[timing]` lines: speech-to-text, assistant turn (LLM ms), each speech chunk (server ms, provider) and when playback started.
 - Providers that just failed are skipped for 30-300 s (circuit breaker), so one dead provider no longer adds a timeout to every reply.
+
+## Telegram backup for reminders
+Some phones (Xiaomi/MIUI) block browser push while idle. Telegram is a second channel that reaches a locked phone.
+1. In Telegram open @BotFather, send `/newbot`, pick a name and a username ending in `bot`, copy the token it gives you.
+2. In Vercel > Project > Settings > Environment Variables add `TELEGRAM_BOT_TOKEN` (value = that token), then redeploy.
+3. Founder OS > Settings > Telegram backup > Connect. Open your bot in Telegram, press Start, send the 8-character code. Press "Send test".
+Every reminder is then sent to Telegram as well as to browsers.
