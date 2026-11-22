@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { savePushSubscription, removePushSubscription } from "./actions";
+import { savePushSubscription, removePushSubscription, sendTestNotification } from "./actions";
 
 const b64ToBytes = (s: string) => {
   const pad = "=".repeat((4 - (s.length % 4)) % 4);
@@ -21,7 +21,10 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
       if (Notification.permission === "denied") return setState("blocked");
       try {
         const reg = await navigator.serviceWorker.getRegistration();
-        setState((await reg?.pushManager.getSubscription()) ? "on" : "off");
+        const sub = await reg?.pushManager.getSubscription();
+        setState(sub ? "on" : "off");
+        // Self-heal: this browser is subscribed, so make sure the server knows it (a missing row means no notifications ever arrive).
+        if (sub) await savePushSubscription({ endpoint: sub.endpoint, p256dh: bytesToB64(sub.getKey("p256dh")), auth: bytesToB64(sub.getKey("auth")), label: navigator.userAgent.slice(0, 90) });
       } catch { setState("off"); }
     })();
   }, []);
@@ -53,6 +56,9 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
       <button onClick={state === "on" ? turnOff : turnOn} className="inline-flex items-center rounded-[10px] bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-[#2c3659]">
         {state === "on" ? "Turn off notifications on this device" : "Turn on notifications on this device"}
       </button>
+      {state === "on" && (
+        <button onClick={async () => { setMsg("Sending..."); const r = await sendTestNotification(); setMsg(r.ok ? (r.devices ? `Test queued for ${r.devices} device(s). It should arrive within a minute.` : "No device is registered yet. Turn notifications off and on again on this device.") : (r.error ?? "Could not queue the test.")); }} className="ml-2 inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-semibold">Send test notification</button>
+      )}
       {msg && <p role="alert" className="mt-2 text-sm text-rose-800">{msg}</p>}
     </div>
   );

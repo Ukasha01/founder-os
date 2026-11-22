@@ -338,6 +338,11 @@ export async function validateWrite(c: Ctx, name: ToolName, args: Json): Promise
     if ("error" in r) return { ok: false, error: r.error + " Add them first with create_person." };
     input.person_id = r.id; labels.person = r.name;
   }
+  if (name === "set_reminder") {
+    const at = zonedToUtc(input.at as string, c.tz); if (Number.isNaN(at.getTime())) return { ok: false, error: "Not a real date and time." };
+    if (at.getTime() < Date.now() - 60_000) return { ok: false, error: "That time has already passed." };
+    input.at_utc = at.toISOString();
+  }
   if (name === "create_meeting" || name === "create_event") {
     const sKey = name === "create_meeting" ? "starts_at" : "start", eKey = name === "create_meeting" ? "ends_at" : "end";
     const st = zonedToUtc(input[sKey] as string, c.tz); if (Number.isNaN(st.getTime())) return { ok: false, error: "Not a real date and time." };
@@ -412,6 +417,7 @@ export function preview(name: ToolName, i: Json, l: Record<string, string>, ws: 
     case "update_meeting": return `Update meeting ${q(l.meeting_id)}${i.status ? `: ${i.status}` : ""}${i.notes ? ", add notes" : ""}${i.decisions ? ", add decisions" : ""}`;
     case "create_commitment": return `Record ${i.direction === "by_me" ? `promise to ${l.person}` : `${l.person}'s promise`}: ${q(i.description)}${i.due_date ? `, due ${i.due_date}` : ""}`;
     case "complete_commitment": return `Mark commitment ${q(l.commitment_id)} completed`;
+    case "set_reminder": return `Remind you ${q(i.title)} at ${String(i.at).replace("T", " ")}`;
     case "create_event": return `Add event ${q(i.title)} at ${String(i.start).replace("T", " ")}`;
     case "create_recurring_task": return `Repeat task ${q(i.title)} ${i.freq}${w}`;
     case "save_daily_review": return `Save daily review for ${i.date ?? "today"}${i.complete ? " and complete it" : ""}`;
@@ -453,7 +459,7 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
   };
 
   switch (name) {
-    case "create_task": return insert("tasks", { workspace_id: i.workspace_id, parent_task_id: i.parent_task_id ?? null, title: i.title, priority: i.priority ?? "normal", current_deadline: i.deadline ?? null, estimated_minutes: i.estimated_minutes ?? null, source: "ai", client_request_id: logId });
+    case "create_task": return insert("tasks", { workspace_id: i.workspace_id, parent_task_id: i.parent_task_id ?? null, title: i.title, priority: i.priority ?? "normal", current_deadline: i.deadline ?? null, due_time: i.due_time ?? null, estimated_minutes: i.estimated_minutes ?? null, source: "ai", client_request_id: logId });
     case "update_task": {
       const patch: Json = {}; for (const k of ["title", "status", "priority", "estimated_minutes"]) if (i[k] !== undefined) patch[k] = i[k];
       const { error } = await db.from("tasks").update(patch).eq("id", i.task_id as string); if (error) fail(error.message);
@@ -602,6 +608,13 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
     case "complete_commitment": {
       const { error } = await db.from("commitments").update({ status: "completed" }).eq("id", i.commitment_id as string); if (error) fail(error.message);
       return { type: "commitments", ids: [i.commitment_id as string], verified: await rowIs("commitments", i.commitment_id as string, { status: "completed" }) };
+    }
+    case "set_reminder": {
+      const row = { title: i.title, remind_at: i.at_utc, kind: "custom", channels: ["in_app", "push"], dedupe_key: `custom:${logId}` };
+      const { data, error } = await db.from("reminders").insert(row).select("id").single();
+      if (error) { if (error.code === "23505") return { type: "reminders", ids: [], verified: true }; return fail(error.message); }
+      const { data: back } = await db.from("reminders").select("id").eq("id", data.id).maybeSingle();
+      return { type: "reminders", ids: [data.id], verified: !!back };
     }
     case "create_event": return insert("calendar_events", { title: i.title, event_type: i.event_type ?? "other", workspace_id: i.workspace_id ?? null, start_at: i.start_utc, end_at: i.end_utc ?? null, client_request_id: logId });
     case "create_recurring_task": {

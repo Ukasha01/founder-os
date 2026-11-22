@@ -49,8 +49,8 @@ export const TOOLS = {
   search: { kind: "read", desc: "Find anything by words: searches task titles and notes, goals, people, meetings, inbox notes and commitments at once. Use when you do not know which kind of item it is.", schema: z.object({ text: txt(100) }), params: { text: s("Words to look for") }, required: ["text"] },
 
   // ---------- tasks ----------
-  create_task: { kind: "write", desc: "Create a task, or a subtask when parent_task_id is given.", schema: z.object({ title: txt(500), workspace: opt(100), parent_task_id: uuid.optional(), priority: priority.optional(), deadline: date.optional(), estimated_minutes: z.number().int().min(1).max(100000).optional() }),
-    params: { title: s("Short task title"), workspace: s("Workspace name; omit for a subtask"), parent_task_id: s("Parent task id"), priority: e(["critical", "high", "normal", "low"]), deadline: s(D), estimated_minutes: i("Estimated minutes") }, required: ["title"] },
+  create_task: { kind: "write", desc: "Create a task, or a subtask when parent_task_id is given.", schema: z.object({ title: txt(500), workspace: opt(100), parent_task_id: uuid.optional(), priority: priority.optional(), deadline: date.optional(), due_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm.").optional(), estimated_minutes: z.number().int().min(1).max(100000).optional() }),
+    params: { title: s("Short task title"), workspace: s("Workspace name; omit for a subtask"), parent_task_id: s("Parent task id"), priority: e(["critical", "high", "normal", "low"]), deadline: s(D), due_time: s("Time of day HH:mm (24h, local) when the task is due; the app announces it then"), estimated_minutes: i("Estimated minutes") }, required: ["title"] },
   update_task: { kind: "write", desc: "Change a task's title, status, priority or estimate.", schema: z.object({ task_id: uuid, title: txt(500).optional(), status: z.enum(TS).optional(), priority: priority.optional(), estimated_minutes: z.number().int().min(1).max(100000).optional() })
     .refine((v) => v.title || v.status || v.priority || v.estimated_minutes, "Nothing to change."),
     params: { task_id: s("Task id"), title: s("New title"), status: e(TS), priority: e(["critical", "high", "normal", "low"]), estimated_minutes: i("Estimated minutes") }, required: ["task_id"] },
@@ -122,6 +122,8 @@ export const TOOLS = {
     params: { meeting_id: s("Meeting id from list_meetings"), person: s("Person's name"), action: e(["add", "remove"]) }, required: ["meeting_id", "person", "action"] },
 
   // ---------- calendar, recurring, review, inbox ----------
+  set_reminder: { kind: "write", desc: "Set a reminder that notifies him (phone and laptop) at an exact date and time. Use for any 'remind me at/tomorrow/in ...' request.", schema: z.object({ title: txt(300), at: ldt }),
+    params: { title: s("What to remind him about"), at: s(L) }, required: ["title", "at"] },
   create_event: { kind: "write", desc: "Add a calendar event.", schema: z.object({ title: txt(300), start: ldt, end: ldt.optional(), event_type: z.enum(["meeting", "class", "appointment", "time_block", "other"]).optional(), workspace: opt(100) }),
     params: { title: s("Event"), start: s(L), end: s(L), event_type: e(["meeting", "class", "appointment", "time_block", "other"]), workspace: s("Workspace name") }, required: ["title", "start"] },
   create_recurring_task: { kind: "write", desc: "Create a task that repeats (tasks are generated automatically).", schema: z.object({ title: txt(300), workspace: txt(100), freq: z.enum(["daily", "weekly", "monthly"]), interval: z.number().int().min(1).max(365).optional(), weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(), monthday: z.number().int().min(1).max(31).optional(), start_date: date.optional(), priority: priority.optional(), estimated_minutes: z.number().int().min(1).max(100000).optional() })
@@ -149,7 +151,7 @@ export const FUNCTION_DECLARATIONS = (Object.entries(TOOLS) as [ToolName, Spec][
 
 // Token-limited providers get only the tools that fit the request: every read tool, a few common write tools, and the
 // write tools whose topic the message mentions (English, Roman Urdu or Urdu script). Providers with large limits get all.
-const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete", "delete_item", "update_commitment"];
+const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete", "delete_item", "update_commitment", "set_reminder"];
 const GROUPS: [RegExp, string[]][] = [
   [/\b(log|logged|worked|work|minutes?|mins?|hours?|ghant[ae]|time)\b|گھنٹ|منٹ|کام کیا|وقت/i, ["log_time"]],
   [/goal|milestone|target|objective|مقصد|ہدف|گول/i, ["create_goal", "add_milestone", "update_milestone", "set_goal_status"]],
@@ -189,6 +191,7 @@ export const resolveWorkspace = (name: string | undefined, list: Workspace[]) =>
 export const SYSTEM_PROMPT = `You are the executive assistant inside Founder OS, the private planner of one person (Ukasha, a student and founder in Karachi). You can run the whole app for him by voice or text.
 LANGUAGE: he mixes Urdu and English. Understand Urdu script, Roman Urdu and English, and mixed sentences; spoken input may contain recognition mistakes, so infer the likely meaning and confirm only if it matters.
 Reply in the language he used. If he wrote or spoke Urdu or Roman Urdu, reply in natural, simple, spoken Pakistani Urdu written in Urdu script (not Hindi words, not stiff or bookish Urdu). Keep task names, app words and technical terms in English letters, as he says them. Write numbers as digits.
+REMINDERS: "remind me at/tomorrow/in ..." means call set_reminder with the exact local date and time (compute it from NOW); a task alone does not notify him. Add a task as well only if he asked for one.
 If INPUT MODE is voice, your reply is read aloud: at most two or three short sentences, no lists, no markdown, no emojis, no ids. If he only said a short command like stop, thanks or okay, answer in a few words.
 FACTS: the context below already lists his open tasks, today's schedule and Inbox. If the answer is there, answer at once without calling a tool. For anything else about his data (details, history, performance, other lists, search), call the read tools first, in ONE turn together when you need several. Never guess numbers or ids. Quote the figures the tools return.
 ACTIONS: write tools only PROPOSE a change; the app shows the user exactly what will happen, asks him to confirm, and tells him when it is done. So call the tool and keep your own text to at most one short line. Never claim something is done. You can do everything the user can do by hand in the app: tasks, goals, habits, KPIs, people, meetings, commitments, calendar events, recurring tasks, timers, workspaces, inbox, reviews, including deleting, archiving and changing status. Never say you cannot do something without first checking your tools; if a tool fits, call it. If a needed tool really is missing, say exactly which action you lack in one short sentence.

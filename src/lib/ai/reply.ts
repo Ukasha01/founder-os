@@ -22,6 +22,7 @@ export function localize(name: string, input: Record<string, unknown> | undefine
   if (name === "undo_last_delete") return "پچھلا حذف واپس کرنا";
   if (name === "delete_task") return "ایک ٹاسک (ذیلی کاموں سمیت) حذف کرنا";
   if (name === "create_task") return `نیا ٹاسک: ${title}`;
+  if (name === "set_reminder") return `یاد دہانی: ${String(input?.title ?? "")} — ${String(input?.at ?? "").replace("T", " ")}`;
   if (name === "complete_task") return "ایک ٹاسک مکمل کرنا";
   return "ایک تبدیلی";
 }

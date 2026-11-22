@@ -80,3 +80,10 @@ test("name resolution for people and workspaces", () => {
   assert.deepEqual(resolveByName("sara", ppl, "person"), ppl[2]);
   assert.deepEqual(resolveByName("Ali Raza", ppl, "person"), ppl[1]);
 });
+
+test("set_reminder is always offered and validated", async () => {
+  const { routeTools, TOOLS } = await import("../../src/lib/ai/tools.ts");
+  assert.ok(routeTools("hello").includes("set_reminder"));
+  assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x", at: "2026-11-23T14:00" }).success, true);
+  assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x", at: "tomorrow" }).success, false);
+});

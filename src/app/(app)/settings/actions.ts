@@ -54,3 +54,11 @@ export async function markNotificationsRead() {
   await supabase.from("notifications").update({ read_at: new Date().toISOString() }).is("read_at", null);
   revalidatePath("/", "layout");
 }
+
+// Queues a notification due right now; the once-a-minute scheduler delivers it to every registered device within a minute.
+export async function sendTestNotification(): Promise<{ ok: boolean; error?: string; devices?: number }> {
+  const supabase = await createClient();
+  const { count } = await supabase.from("push_subscriptions").select("id", { count: "exact", head: true });
+  const { error } = await supabase.from("reminders").insert({ title: "Test notification", body: "If you can see this on your phone or laptop, reminders work.", remind_at: new Date().toISOString(), kind: "custom", channels: ["in_app", "push"], dedupe_key: `test:${Date.now()}` });
+  return error ? { ok: false, error: error.message } : { ok: true, devices: count ?? 0 };
+}
