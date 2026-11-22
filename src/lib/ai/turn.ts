@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { askLlm, type Msg, type ToolResult } from "./llm";
 import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } from "./tools";
 import { runRead, validateWrite, executeWrite, type Ctx } from "./registry";
-import { addDays, dateInTz, rangeUtc } from "../time";
+import { addDays, dateInTz, rangeUtc, timeInTz } from "../time";
 import { classifyDecision } from "../voice-commands";
 import { composeReply, localize } from "./reply";
 import { detectLang, isEcho, languageDirective } from "./lang";
@@ -120,7 +120,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const wsName = new Map(c.workspaces.map((w) => [w.id, w.name]));
   const hm = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: c.tz });
   const schedule = [...(events ?? []).map((e) => `${e.all_day ? "all day" : hm.format(new Date(e.start_at))} ${e.title}`), ...(meets ?? []).map((m) => `${hm.format(new Date(m.starts_at))} meeting: ${m.title}`)].join("; ");
-  const context = `${languageDirective(lang)}\nTODAY: ${c.today} (${c.tz}); tomorrow is ${addDays(c.today, 1)}\nINPUT MODE: ${voice ? "voice (spoken; your reply will be read aloud, so keep it short and conversational)" : "typed"}\nWORKSPACES: ${c.workspaces.map((w) => w.name).join(", ")}\nTODAY'S SCHEDULE: ${schedule || "nothing scheduled"}\n` +
+  const context = `${languageDirective(lang)}\nTODAY: ${c.today}, NOW: ${timeInTz(new Date(), c.tz)} (${c.tz}); tomorrow is ${addDays(c.today, 1)}\nINPUT MODE: ${voice ? "voice (spoken; your reply will be read aloud, so keep it short and conversational)" : "typed"}\nWORKSPACES: ${c.workspaces.map((w) => w.name).join(", ")}\nTODAY'S SCHEDULE: ${schedule || "nothing scheduled"}\n` +
     `INBOX (${inbox?.length ?? 0} unsorted; id | text): ${(inbox ?? []).map((x) => `${x.id} | ${x.raw_text}`).join(" || ") || "empty"}\n` +
     `SOME OPEN TASKS (id | title | workspace | priority | deadline; use list_tasks for more):\n` +
     ((tasks ?? []).map((t) => `${t.id} | ${t.title} | ${wsName.get(t.workspace_id)} | ${t.priority} | ${t.current_deadline ?? "none"}`).join("\n") || "(none)");

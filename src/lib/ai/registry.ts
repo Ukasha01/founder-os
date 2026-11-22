@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TOOLS, resolveByName, type ToolName, type Workspace } from "./tools.ts";
-import { addDays, dateInTz, rangeUtc, zonedToUtc } from "../time.ts";
+import { addDays, dateInTz, timeInTz, rangeUtc, zonedToUtc } from "../time.ts";
 import { consistency, currentStreak, isScheduled, type Entries, type EntryStatus, type Frequency } from "../habits.ts";
 import { loadDay } from "../dayscore.ts";
 
@@ -339,9 +339,10 @@ export async function validateWrite(c: Ctx, name: ToolName, args: Json): Promise
     input.person_id = r.id; labels.person = r.name;
   }
   if (name === "set_reminder") {
-    const at = zonedToUtc(input.at as string, c.tz); if (Number.isNaN(at.getTime())) return { ok: false, error: "Not a real date and time." };
+    const at = input.in_minutes ? new Date(Date.now() + Number(input.in_minutes) * 60_000) : zonedToUtc(input.at as string, c.tz); if (Number.isNaN(at.getTime())) return { ok: false, error: "Not a real date and time." };
     if (at.getTime() < Date.now() - 60_000) return { ok: false, error: "That time has already passed." };
     input.at_utc = at.toISOString();
+    input.at = `${dateInTz(at, c.tz)}T${timeInTz(at, c.tz)}`;
   }
   if (name === "create_meeting" || name === "create_event") {
     const sKey = name === "create_meeting" ? "starts_at" : "start", eKey = name === "create_meeting" ? "ends_at" : "end";

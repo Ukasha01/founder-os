@@ -87,3 +87,9 @@ test("set_reminder is always offered and validated", async () => {
   assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x", at: "2026-11-23T14:00" }).success, true);
   assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x", at: "tomorrow" }).success, false);
 });
+
+test("set_reminder accepts in_minutes without a clock time", async () => {
+  const { TOOLS } = await import("../../src/lib/ai/tools.ts");
+  assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x", in_minutes: 5 }).success, true);
+  assert.equal(TOOLS.set_reminder.schema.safeParse({ title: "x" }).success, false);
+});
