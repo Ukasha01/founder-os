@@ -140,3 +140,15 @@ test("sync engine: expired test events are cleaned up, fresh ones are kept", asy
   const g = fakeGc(); await syncGoogle(fakeDb(tables), g.gc, NOW, "", tz);
   assert.deepEqual(g.log, ["rm:ev-old"]); assert.equal(tables.google_calendar_links.length, 1);
 });
+
+test("completing a timed task keeps its Google event as a Done record instead of deleting it", async () => {
+  const tables: Record<string, R[]> = { reminders: [], google_calendar_links: [],
+    tasks: [{ id: "t1", owner_id: "u1", title: "Report", current_deadline: "2026-11-24", due_time: "14:00:00", status: "not_started", deleted_at: null, estimated_minutes: null }] };
+  const db = fakeDb(tables); const g = fakeGc();
+  await syncGoogle(db, g.gc, NOW, "", tz);                                         // created
+  tables.tasks[0].status = "completed";
+  const s = await syncGoogle(db, g.gc, NOW, "", tz);
+  assert.equal(s.deleted, 0); assert.equal(s.updated, 1); assert.ok(!g.log.some((l) => l.startsWith("rm:")));
+  const s2 = await syncGoogle(db, g.gc, NOW, "", tz); assert.equal(s2.updated, 0);   // stable: no repeat calls
+  assert.equal(buildEvent({ kind: "task", id: "t1", title: "Report", start: NOW, end: NOW, tz: "Asia/Karachi", url: "", popups: [], done: true }).summary, "✅ Done: Report");
+});

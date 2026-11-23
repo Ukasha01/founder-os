@@ -72,7 +72,20 @@ export async function syncGoogle(db: SupabaseClient, gc: GcalClient, now: Date, 
       const { data: r } = await db.from("reminders").select("remind_at, acked_at, status").eq("id", l.source_id).maybeSingle();
       keep = !!r && !r.acked_at && r.status !== "cancelled" && new Date(r.remind_at as string).getTime() <= now.getTime();   // already fired: keep as history
     } else {
-      const { data: t } = await db.from("tasks").select("deleted_at, status, due_time, current_deadline").eq("id", l.source_id).maybeSingle();
+      const { data: t } = await db.from("tasks").select("title, deleted_at, status, due_time, current_deadline, estimated_minutes").eq("id", l.source_id).maybeSingle();
+      // Completed: keep the event as a record ("✅ Done: ...", no pop-ups) instead of deleting it, so the calendar shows what got done.
+      if (t && !t.deleted_at && t.status === "completed" && t.due_time) {
+        const sp = taskSpec(t as never, tzOf(l.owner_id), new Date(0), appUrl);
+        if ("spec" in sp) {
+          const body = buildEvent({ ...sp.spec, popups: [], done: true }), hash = payloadHash(body);
+          if (l.payload_hash !== hash && calls < MAX_CALLS) {
+            calls++; const r = await gc.upsert(l.google_event_id, body);
+            if (r.ok) { await db.from("google_calendar_links").update({ status: "synced", payload_hash: hash, attempts: 0, last_error: null, synced_at: nowIso, updated_at: nowIso }).eq("id", l.id); st.updated++; }
+            else { st.failed++; await db.from("google_calendar_links").update({ last_error: r.message, updated_at: nowIso }).eq("id", l.id); }
+          }
+          continue;
+        }
+      }
       const stillOpen = !!t && !t.deleted_at && OPEN.includes(t.status as string) && !!t.due_time;
       // Open timed task that is not in the wanted set: keep if its time has passed (history); remove if it was moved beyond the two-week window.
       keep = stillOpen && !(zonedToUtc(`${t!.current_deadline}T${String(t!.due_time).slice(0, 5)}`, tzOf(l.owner_id)).getTime() > now.getTime());

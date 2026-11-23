@@ -5,8 +5,8 @@ export type Section = { key: string; label: string; icon: IconName; href: string
 
 // Five places instead of sixteen. Tabs inside a section keep every feature one tap away.
 export const SECTIONS: Section[] = [
-  { key: "today", label: "Today", icon: "today", href: "/", match: ["/", "/inbox", "/review", "/time", "/assistant"],
-    tabs: [{ href: "/", label: "Today" }, { href: "/inbox", label: "Inbox" }, { href: "/review", label: "Review" }, { href: "/time", label: "Time" }, { href: "/assistant", label: "Assistant" }] },
+  { key: "today", label: "Today", icon: "today", href: "/", match: ["/", "/inbox", "/review", "/history", "/time", "/assistant"],
+    tabs: [{ href: "/", label: "Today" }, { href: "/inbox", label: "Inbox" }, { href: "/review", label: "Review" }, { href: "/history", label: "History" }, { href: "/time", label: "Time" }, { href: "/assistant", label: "Assistant" }] },
   { key: "tasks", label: "Tasks", icon: "tasks", href: "/tasks", match: ["/tasks"], tabs: [] },
   { key: "calendar", label: "Calendar", icon: "calendar", href: "/calendar", match: ["/calendar"], tabs: [] },
   { key: "plan", label: "Plan", icon: "plan", href: "/goals", match: ["/goals", "/habits", "/kpis", "/recurring"],

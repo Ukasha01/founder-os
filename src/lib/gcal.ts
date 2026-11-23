@@ -38,12 +38,12 @@ export function parseGcalEnv(env: Record<string, string | undefined>): ParsedEnv
 // Deterministic id: the same source always maps to the same event, so a retry can never create a duplicate.
 export const eventIdFor = (type: string, id: string) => "fos" + createHash("sha256").update(`${type}:${id}`).digest("hex").slice(0, 48);
 
-export type EventSpec = { kind: "reminder" | "task"; id: string; title: string; start: Date; end: Date; tz: string; url: string; popups: number[]; test?: boolean };
+export type EventSpec = { kind: "reminder" | "task"; id: string; title: string; start: Date; end: Date; tz: string; url: string; popups: number[]; test?: boolean; done?: boolean };
 const wall = (d: Date, tz: string) => `${dateInTz(d, tz)}T${timeInTz(d, tz)}:00`;
 
 export function buildEvent(s: EventSpec) {
   return {
-    summary: s.kind === "reminder" ? `⏰ ${s.title}` : `Due: ${s.title}`,
+    summary: s.done ? `✅ Done: ${s.title}` : s.kind === "reminder" ? `⏰ ${s.title}` : `Due: ${s.title}`,
     description: `Founder OS ${s.kind}. Open: ${s.url}`,
     start: { dateTime: wall(s.start, s.tz), timeZone: s.tz },
     end: { dateTime: wall(s.end, s.tz), timeZone: s.tz },
