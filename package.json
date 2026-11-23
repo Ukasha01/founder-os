@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "node tests/e2e/smoke.mjs",
-    "test:unit": "node --experimental-strip-types tests/unit/time.test.mts && node --experimental-strip-types tests/unit/habits.test.mts && node --experimental-strip-types tests/unit/score.test.mts && node --experimental-strip-types tests/unit/recurrence.test.mts && node --experimental-strip-types tests/unit/ai.test.mts && node --experimental-strip-types tests/unit/queue.test.mts && node --experimental-strip-types tests/unit/ics.test.mts && node --experimental-strip-types tests/unit/reminders.test.mts && node --experimental-strip-types tests/unit/voice.test.mts && node --experimental-strip-types tests/unit/live.test.mts"
+    "test:unit": "node --experimental-strip-types tests/unit/time.test.mts && node --experimental-strip-types tests/unit/habits.test.mts && node --experimental-strip-types tests/unit/score.test.mts && node --experimental-strip-types tests/unit/recurrence.test.mts && node --experimental-strip-types tests/unit/ai.test.mts && node --experimental-strip-types tests/unit/queue.test.mts && node --experimental-strip-types tests/unit/ics.test.mts && node --experimental-strip-types tests/unit/reminders.test.mts && node --experimental-strip-types tests/unit/voice.test.mts && node --experimental-strip-types tests/unit/live.test.mts && node --experimental-strip-types tests/unit/gcal.test.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

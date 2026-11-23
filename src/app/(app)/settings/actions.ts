@@ -116,3 +116,46 @@ export async function sendTestEmail(): Promise<{ ok: boolean; error?: string; to
   const r = await sendEmail(to, "Founder OS test reminder", "If this reached your phone, email reminders work.");
   return r.ok ? { ok: true, to } : { ok: false, error: r.error };
 }
+
+// ---- Google Calendar mirror ----
+export async function googleStatus(): Promise<{ on: boolean; reason?: string; synced: number; failed: number; lastError: string | null }> {
+  const { parseGcalEnv } = await import("@/lib/gcal");
+  const g = parseGcalEnv(process.env);
+  const supabase = await createClient();
+  const { data } = await supabase.from("google_calendar_links").select("status, last_error, updated_at").neq("status", "deleted").order("updated_at", { ascending: false }).limit(200);
+  const rows = data ?? [];
+  return { on: g.on, reason: g.on ? undefined : g.reason, synced: rows.filter((r) => r.status === "synced").length, failed: rows.filter((r) => r.status === "failed").length, lastError: (rows.find((r) => r.status === "failed")?.last_error as string | undefined) ?? null };
+}
+
+// Creates one clearly marked test event 2 minutes ahead (pop-up at 0 minutes). It is removed automatically after 20 minutes, or with "Remove test events".
+export async function sendGoogleTestEvent(): Promise<{ ok: boolean; error?: string; at?: string }> {
+  const { parseGcalEnv, makeClient, buildEvent, eventIdFor } = await import("@/lib/gcal");
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { randomUUID } = await import("node:crypto");
+  const g = parseGcalEnv(process.env); if (!g.on) return { ok: false, error: g.reason };
+  const supabase = await createClient();
+  const { data: u } = await supabase.auth.getClaims(); if (!u?.claims) return { ok: false, error: "Not signed in." };
+  const admin = createAdminClient(); if (!admin) return { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY is not set." };
+  const { data: us } = await supabase.from("user_settings").select("timezone").maybeSingle();
+  const tz = (us?.timezone as string | undefined) ?? "Asia/Karachi";
+  const id = randomUUID(), start = new Date(Date.now() + 2 * 60_000 + 30_000);
+  const eventId = eventIdFor("reminder", id);
+  const body = buildEvent({ kind: "reminder", id, title: "Founder OS test reminder", start, end: new Date(start.getTime() + 10 * 60_000), tz, url: process.env.NEXT_PUBLIC_APP_URL ?? "", popups: [0], test: true });
+  const r = await makeClient(g.cfg).upsert(eventId, body);
+  if (!r.ok) return { ok: false, error: r.message };
+  await admin.from("google_calendar_links").insert({ owner_id: u.claims.sub, source_type: "reminder", source_id: id, google_event_id: eventId, status: "synced", is_test: true, synced_at: new Date().toISOString() });
+  return { ok: true, at: start.toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" }) };
+}
+
+export async function removeGoogleTestEvents(): Promise<{ ok: boolean; removed: number; error?: string }> {
+  const { parseGcalEnv, makeClient } = await import("@/lib/gcal");
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const g = parseGcalEnv(process.env); if (!g.on) return { ok: false, removed: 0, error: g.reason };
+  const supabase = await createClient();
+  const { data: u } = await supabase.auth.getClaims(); if (!u?.claims) return { ok: false, removed: 0, error: "Not signed in." };
+  const admin = createAdminClient(); if (!admin) return { ok: false, removed: 0, error: "SUPABASE_SERVICE_ROLE_KEY is not set." };
+  const { data: rows } = await admin.from("google_calendar_links").select("id, google_event_id").eq("owner_id", u.claims.sub).eq("is_test", true);
+  const gc = makeClient(g.cfg); let removed = 0;
+  for (const l of rows ?? []) { const r = await gc.remove(l.google_event_id as string); if (r.ok) { await admin.from("google_calendar_links").delete().eq("id", l.id); removed++; } else return { ok: false, removed, error: r.message }; }
+  return { ok: true, removed };
+}

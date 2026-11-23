@@ -5,6 +5,10 @@ import { planReminders, nextStatus, naggable, nextNagAt, NAG_MINUTES, type Draft
 import { dateInTz, zonedToUtc } from "@/lib/time";
 import { tgSend, tgToken } from "@/lib/telegram";
 import { emailOn, sendEmail, worthEmailing } from "@/lib/email";
+import { makeClient, parseGcalEnv, type GcalClient } from "@/lib/gcal";
+import { syncGoogle } from "@/lib/gcal-sync";
+
+let gcalClient: { key: string; client: GcalClient } | null = null;   // reused between warm invocations so the Google token is cached
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -87,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
     if (email && emailOn()) {
       const to = process.env.REMINDER_EMAIL_TO || (await db.auth.admin.getUserById(ownerId)).data.user?.email;
-      if (to) { const m = await sendEmail(to, `Reminder: ${title}`, `${title}${body ? `\n${body}` : ""}\n\nOpen Founder OS: ${process.env.NEXT_PUBLIC_SITE_URL ?? ""}${link}`); if (m.ok) stats.email_sent = (stats.email_sent ?? 0) + 1; else console.error(`[reminder email] ${m.error}`); }
+      if (to) { const m = await sendEmail(to, `Reminder: ${title}`, `${title}${body ? `\n${body}` : ""}\n\nOpen Founder OS: ${process.env.NEXT_PUBLIC_APP_URL ?? ""}${link}`); if (m.ok) stats.email_sent = (stats.email_sent ?? 0) + 1; else console.error(`[reminder email] ${m.error}`); }
     }
   };
 
@@ -124,5 +128,16 @@ export async function GET(req: NextRequest) {
     await db.from("reminders").update({ nag_count: r.nag_count + 1, next_nag_at: nxt ? nxt.toISOString() : null }).eq("id", r.id);
     stats.nagged = (stats.nagged ?? 0) + 1;
   }
-  return NextResponse.json({ ok: true, push_configured: pushOn, ...stats });
+  // 4) Google Calendar mirror (optional). Never allowed to affect the delivery above.
+  const g = parseGcalEnv(process.env);
+  if (g.on) {
+    try {
+      const key = `${g.cfg.clientEmail}:${g.cfg.calendarId}`;
+      if (gcalClient?.key !== key) gcalClient = { key, client: makeClient(g.cfg) };
+      const tzByOwner = new Map((users ?? []).map((u) => [u.owner_id as string, (u.timezone as string | null) ?? "Asia/Karachi"]));
+      const r = await syncGoogle(db, gcalClient.client, now, process.env.NEXT_PUBLIC_APP_URL ?? "", tzByOwner);
+      stats.gcal_created = r.created; stats.gcal_updated = r.updated; stats.gcal_deleted = r.deleted; stats.gcal_failed = r.failed;
+    } catch { console.error("[gcal] sync step failed"); stats.gcal_error = 1; }
+  }
+  return NextResponse.json({ ok: true, push_configured: pushOn, google_calendar: g.on ? "on" : g.reason, ...stats });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { telegramStatus, startTelegramLink, disconnectTelegram, testTelegram, sendTestEmail } from "./actions";
+import { telegramStatus, startTelegramLink, disconnectTelegram, testTelegram, sendTestEmail, googleStatus, sendGoogleTestEvent, removeGoogleTestEvents } from "./actions";
 
 const btn = "inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-semibold";
 export function TelegramLink() {
@@ -35,6 +35,25 @@ export function EmailBackup() {
   return (
     <div>
       <button className={btn} onClick={async () => { setMsg("Sending..."); const r = await sendTestEmail(); setMsg(r.ok ? `Sent to ${r.to}. Check Gmail on your phone.` : (r.error ?? "Failed.")); }}>Send test email</button>
+      {msg && <p role="status" className="mt-2 text-sm">{msg}</p>}
+    </div>
+  );
+}
+
+export function GoogleCalendarCard() {
+  const [st, setSt] = useState<{ on: boolean; reason?: string; synced: number; failed: number; lastError: string | null } | null>(null);
+  const [msg, setMsg] = useState("");
+  const refresh = () => googleStatus().then(setSt).catch(() => undefined);
+  useEffect(() => { refresh(); }, []);
+  if (!st) return null;
+  if (!st.on) return <p className="text-sm text-neutral-600">Google Calendar is off: {st.reason}</p>;
+  return (
+    <div>
+      <p className="text-sm">On. {st.synced} item(s) mirrored{st.failed ? `, ${st.failed} failed${st.lastError ? ` (${st.lastError})` : ""}` : ""}.</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button className={btn} onClick={async () => { setMsg("Creating..."); const r = await sendGoogleTestEvent(); setMsg(r.ok ? `Test event created for ${r.at}. Look for a pop-up on your phone then.` : (r.error ?? "Failed.")); refresh(); }}>Send test event</button>
+        <button className={btn} onClick={async () => { const r = await removeGoogleTestEvents(); setMsg(r.ok ? `Removed ${r.removed} test event(s).` : (r.error ?? "Failed.")); refresh(); }}>Remove test events</button>
+      </div>
       {msg && <p role="status" className="mt-2 text-sm">{msg}</p>}
     </div>
   );

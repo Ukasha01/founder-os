@@ -103,3 +103,12 @@ Every reminder is then sent to Telegram as well as to browsers.
 2. Resend > API Keys > Create API Key (sending access). Copy it.
 3. Vercel > Settings > Environment Variables: add `RESEND_API_KEY`, then redeploy.
 4. Founder OS > Settings > Email backup > Send test email. Reminders you set, meetings and timed tasks are then emailed too (daily summaries are not).
+
+## Google Calendar alerts
+Reminders you set (by voice or text) and tasks that have a due time are mirrored to a Google Calendar as events with pop-up alerts, in Karachi time. It is an extra alert path next to push, email and Telegram.
+- **Setup:** enable the Google Calendar API in your Google Cloud project; share the calendar with the service account's email with "Make changes to events"; in Vercel add `GOOGLE_CALENDAR_ID` and `GOOGLE_SERVICE_ACCOUNT_JSON` (one-line JSON; or `GOOGLE_SERVICE_ACCOUNT_JSON_B64`), then redeploy. Never put the key in chat or Git.
+- **What is mirrored:** reminders with an exact time (pop-up at the time), and open tasks with a due time within the next 14 days (pop-ups 10 minutes before and at the time). Daily summaries, meetings and commitments are not mirrored.
+- **Kept in step automatically** (checked every minute): changing a task's date/time updates the event; Done, completing, deleting or soft-deleting removes it; Undo brings it back. Times already in the past are skipped. A failed call is retried (up to 5 times, error shown in Settings) and never blocks normal reminders.
+- **Settings > Google Calendar alerts:** "Send test event" creates a marked event 2 minutes ahead (removed automatically after 20 minutes); "Remove test events" deletes them at once.
+- **Phone tip:** in Google Calendar settings for this calendar, also set the default notification to "Notification, 0 minutes before" as a fallback. Pop-ups on a Xiaomi phone depend on the Google Calendar app's notification and battery settings.
+- Turn it off any time with `GOOGLE_CALENDAR_SYNC=off`.
