@@ -16,7 +16,16 @@ export async function currentConversation(supabase: SupabaseClient): Promise<str
   return created.id;
 }
 
+// An approval request nobody answered within a day is stale: the situation has moved on, so it is cancelled rather than left to be run later.
+export const APPROVAL_TTL_MS = 24 * 3600_000;
+export const approvalCutoff = (now = new Date()) => new Date(now.getTime() - APPROVAL_TTL_MS).toISOString();
+export async function expireStaleApprovals(supabase: SupabaseClient, now = new Date()): Promise<void> {
+  await supabase.from("ai_action_logs").update({ status: "cancelled", error: "Expired: not approved within a day." })
+    .eq("status", "awaiting_approval").lt("created_at", approvalCutoff(now));
+}
+
 export async function makeCtx(supabase: SupabaseClient): Promise<Ctx> {
+  await expireStaleApprovals(supabase);
   const [{ data: settings }, { data: ws }] = await Promise.all([
     supabase.from("user_settings").select("timezone").maybeSingle(),
     supabase.from("workspaces").select("id, name").is("archived_at", null).order("sort_order"),
@@ -30,7 +39,7 @@ export async function makeCtx(supabase: SupabaseClient): Promise<Ctx> {
 export async function runLog(c: Ctx, logId: string): Promise<boolean> {
   const { data: log } = await c.supabase.from("ai_action_logs")
     .update({ status: "executing", approved_at: new Date().toISOString() })
-    .eq("id", logId).eq("status", "awaiting_approval").select("id, tool_name, validated_input").maybeSingle();
+    .eq("id", logId).eq("status", "awaiting_approval").gte("created_at", approvalCutoff()).select("id, tool_name, validated_input").maybeSingle();
   if (!log || !isToolName(log.tool_name) || !log.validated_input) return false;
   try {
     const done = await executeWrite(c, log.tool_name, log.validated_input as Record<string, unknown>, log.id);

@@ -5,6 +5,7 @@ import { saveGeneral, saveWeights } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import { PushToggle } from "./push-toggle";
 import { TelegramLink, EmailBackup, GoogleCalendarCard } from "./telegram-link";
+import { tgToken } from "@/lib/telegram";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const sp = await searchParams;
@@ -35,11 +36,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="mt-1 mb-3 text-sm text-neutral-600">A daily summary of what is due, meetings starting within the hour, and commitments to follow up. They always appear on the Today screen; this also sends them to your phone.</p>
         <PushToggle publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null} />
       </section>
-      <section className={`${card} mt-4`}>
-        <h2 className="font-medium">Telegram backup</h2>
-        <p className="mt-1 mb-3 text-sm text-neutral-600">Some phones block browser notifications when idle. Telegram reaches a locked phone reliably, so reminders are also sent there.</p>
-        <TelegramLink />
-      </section>
+      {tgToken() && (
+        <section className={`${card} mt-4`}>
+          <h2 className="font-medium">Telegram backup</h2>
+          <p className="mt-1 mb-3 text-sm text-neutral-600">Some phones block browser notifications when idle. Telegram reaches a locked phone reliably, so reminders are also sent there.</p>
+          <TelegramLink />
+        </section>
+      )}
       <section className={`${card} mt-4`}>
         <h2 className="font-medium">Email backup (no VPN needed)</h2>
         <p className="mt-1 mb-3 text-sm text-neutral-600">Reminders you set, meetings and timed tasks are also emailed to your account address, so Gmail alerts your phone even when browser push is blocked.</p>

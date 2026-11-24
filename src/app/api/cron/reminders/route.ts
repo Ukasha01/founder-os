@@ -4,9 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { planReminders, nextStatus, naggable, nextNagAt, NAG_MINUTES, type Draft } from "@/lib/reminders";
 import { dateInTz, zonedToUtc } from "@/lib/time";
 import { tgSend, tgToken } from "@/lib/telegram";
-import { emailOn, sendEmail, worthEmailing } from "@/lib/email";
+import { emailOn, sendEmail } from "@/lib/email";
 import { makeClient, parseGcalEnv, type GcalClient } from "@/lib/gcal";
 import { syncGoogle } from "@/lib/gcal-sync";
+import { claimDelivery, claimNag } from "@/lib/claim";
 
 let gcalClient: { key: string; client: GcalClient } | null = null;   // reused between warm invocations so the Google token is cached
 
@@ -99,6 +100,7 @@ export async function GET(req: NextRequest) {
   const { data: due } = await db.from("reminders").select("id, owner_id, title, body, kind, channels, attempts, task_id, meeting_id, commitment_id, event_id")
     .eq("status", "pending").lte("remind_at", now.toISOString()).order("remind_at").limit(100);
   for (const r of due ?? []) {
+    if (!(await claimDelivery(db, r.id, r.attempts))) { stats.skipped_claimed = (stats.skipped_claimed ?? 0) + 1; continue; }   // an overlapping run already took this one
     const link = r.meeting_id ? `/meetings/${r.meeting_id}` : r.event_id ? "/calendar" : r.task_id ? `/tasks/${r.task_id}` : r.commitment_id ? "/commitments" : "/";
     let delivered = false, lastError: string | null = null;
     const { data: existing } = await db.from("notifications").select("id").eq("reminder_id", r.id).maybeSingle();
@@ -109,7 +111,7 @@ export async function GET(req: NextRequest) {
     }
     if (delivered && pushOn && (r.channels as string[]).includes("push")) lastError = (await pushAll(r.owner_id, { title: r.title, body: r.body ?? "", url: link, rid: r.id })) ?? lastError;
     // Backup channels reach a locked phone even when the phone maker blocks browser push (email only for reminders that matter).
-    if (delivered && r.attempts === 0) await backups(r.owner_id, r.title, r.body, link, worthEmailing(r.kind, r.title));
+    if (delivered && r.attempts === 0) await backups(r.owner_id, r.title, r.body, link, naggable(r.kind, r.title));
     const status = nextStatus(r.attempts, delivered);
     if (status === "failed") stats.failed++;
     const first = delivered ? nextNagAt(now, 0) : null;
@@ -120,12 +122,11 @@ export async function GET(req: NextRequest) {
   const { data: nags } = await db.from("reminders").select("id, owner_id, title, body, kind, nag_count, task_id, meeting_id, commitment_id, event_id")
     .eq("status", "sent").is("acked_at", null).not("next_nag_at", "is", null).lte("next_nag_at", now.toISOString()).lt("nag_count", NAG_MINUTES.length).limit(50);
   for (const r of nags ?? []) {
+    if (!(await claimNag(db, r.id, r.nag_count, nextNagAt(now, r.nag_count + 1)))) continue;   // acknowledged meanwhile, or another run took it
     const link = r.meeting_id ? `/meetings/${r.meeting_id}` : r.event_id ? "/calendar" : r.task_id ? `/tasks/${r.task_id}` : r.commitment_id ? "/commitments" : "/";
     const title = `Still pending: ${r.title}`;
     if (pushOn) await pushAll(r.owner_id, { title, body: r.body ?? "Tap Done when handled, or Snooze.", url: link, rid: r.id, nag: r.nag_count + 1 });
     await backups(r.owner_id, title, r.body, link, r.nag_count === 1);   // email once more on the second repeat, not on every one
-    const nxt = nextNagAt(now, r.nag_count + 1);
-    await db.from("reminders").update({ nag_count: r.nag_count + 1, next_nag_at: nxt ? nxt.toISOString() : null }).eq("id", r.id);
     stats.nagged = (stats.nagged ?? 0) + 1;
   }
   // 4) Google Calendar mirror (optional). Never allowed to affect the delivery above.

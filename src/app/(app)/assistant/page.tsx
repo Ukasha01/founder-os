@@ -3,6 +3,7 @@ import { card, badge } from "@/lib/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { approveAction, approveAll, rejectAction, newChat, saveToInbox, setAutoApprove } from "./actions";
 import { Composer } from "./composer";
+import { expireStaleApprovals } from "@/lib/ai/turn";
 
 type Msg = { id: string; role: string; content: string | null; created_at: string };
 type Log = { id: string; message_id: string | null; tool_name: string; status: string; preview: { text?: string } | null; error: string | null };
@@ -12,6 +13,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   executed: { label: "Done", cls: "bg-emerald-100 text-emerald-800" },
   rejected: { label: "Skipped", cls: "bg-neutral-100 text-neutral-500" },
   failed: { label: "Not done", cls: "bg-rose-100 text-rose-800" },
+  cancelled: { label: "Expired", cls: "bg-neutral-100 text-neutral-500" },
   executing: { label: "Running", cls: "bg-sky-100 text-sky-800" },
 };
 
@@ -19,6 +21,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
   const { error } = await searchParams;
   const supabase = await createClient();
   const configured = !!process.env.GEMINI_API_KEY;
+  await expireStaleApprovals(supabase);
   const [{ data: st }, { data: conv }] = await Promise.all([
     supabase.from("user_settings").select("ai_auto_approve").maybeSingle(),
     supabase.from("ai_conversations").select("id").is("archived_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),

@@ -51,8 +51,8 @@ export function planReminders(i: PlanInput): Draft[] {
 export const MAX_ATTEMPTS = 3;
 export const nextStatus = (attempts: number, delivered: boolean): "sent" | "pending" | "failed" => delivered ? "sent" : attempts + 1 >= MAX_ATTEMPTS ? "failed" : "pending";
 
-// Reminders that matter are repeated until acknowledged (Done, a tap on the notification, or reading it in the app):
-// 3, 5, 10 and 15 minutes after the first alert. Daily summaries are never repeated.
+// One rule for "this reminder matters": it is repeated until acknowledged (Done, a tap on the notification, or reading it in the app)
+// at 3, 5, 10 and 15 minutes after the first alert, and it is also emailed. Daily summaries are neither repeated nor emailed.
 export const NAG_MINUTES = [3, 5, 10, 15];
 export const naggable = (kind: string, title: string) => kind === "custom" || kind === "meeting" || kind === "follow_up" || /^Due now/i.test(title);
 export function nextNagAt(from: Date, nagCount: number): Date | null {

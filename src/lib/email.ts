@@ -2,11 +2,6 @@
 // and need no VPN. Without RESEND_API_KEY nothing is sent.
 export const emailOn = () => !!process.env.RESEND_API_KEY;
 
-// Daily summaries stay in the app; only things with a moment attached are emailed.
-export function worthEmailing(kind: string, title: string): boolean {
-  return kind === "custom" || kind === "meeting" || kind === "follow_up" || /^Due now/i.test(title);
-}
-
 export async function sendEmail(to: string, subject: string, text: string): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY; if (!key) return { ok: false, error: "RESEND_API_KEY is not set." };
   const from = process.env.REMINDER_EMAIL_FROM || "Founder OS <onboarding@resend.dev>";

@@ -4,10 +4,26 @@ import { buildEvent, eventIdFor, payloadHash, reminderQualifies, reminderSpec, t
 
 // Runs inside the once-a-minute job. It never throws and never blocks reminder delivery: a failure is recorded on the link row
 // and retried on the next run (up to 5 attempts per version of the item).
-const MAX_CALLS = 20, MAX_ATTEMPTS = 5, TEST_TTL_MS = 20 * 60_000;
+const MAX_CALLS = 20, MAX_ATTEMPTS = 5, TEST_TTL_MS = 20 * 60_000, FRESH_MS = 24 * 3600_000, CHUNK = 100;
 const OPEN = ["not_started", "in_progress", "waiting"];
 
-type Link = { id: string; owner_id: string; source_type: "reminder" | "task"; source_id: string; google_event_id: string; payload_hash: string | null; status: string; attempts: number; is_test: boolean; created_at: string };
+type Link = { id: string; owner_id: string; source_type: "reminder" | "task"; source_id: string; google_event_id: string; payload_hash: string | null; status: string; attempts: number; is_test: boolean; created_at: string; updated_at: string };
+// Links worth looking at in step D: not a test event, not still wanted, not already given up on. A link untouched for a day is history;
+// history is rechecked once an hour (at minute 0) so a deleted old task still loses its event, without a lookup every minute.
+export function linksToScan(links: Link[], wanted: Set<string>, now: Date): Link[] {
+  const deep = now.getUTCMinutes() === 0;
+  return links.filter((l) => !l.is_test && l.status !== "skipped_past" && !wanted.has(`${l.source_type}:${l.source_id}`)
+    && (deep || now.getTime() - new Date(l.updated_at).getTime() < FRESH_MS));
+}
+async function fetchByIds(db: SupabaseClient, table: string, cols: string, ids: string[]): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await db.from(table).select(cols).in("id", ids.slice(i, i + CHUNK));
+    out.push(...((data ?? []) as unknown as Record<string, unknown>[]));
+  }
+  return out;
+}
+
 export type SyncStats = { created: number; updated: number; deleted: number; failed: number; skipped_past: number };
 
 export async function syncGoogle(db: SupabaseClient, gc: GcalClient, now: Date, appUrl: string, tzByOwner: Map<string, string>): Promise<SyncStats> {
@@ -16,7 +32,7 @@ export async function syncGoogle(db: SupabaseClient, gc: GcalClient, now: Date, 
   const tzOf = (o: string) => tzByOwner.get(o) ?? "Asia/Karachi";
   const nowIso = now.toISOString();
 
-  const { data: linkRows } = await db.from("google_calendar_links").select("id, owner_id, source_type, source_id, google_event_id, payload_hash, status, attempts, is_test, created_at").neq("status", "deleted").limit(500);
+  const { data: linkRows } = await db.from("google_calendar_links").select("id, owner_id, source_type, source_id, google_event_id, payload_hash, status, attempts, is_test, created_at, updated_at").neq("status", "deleted").order("updated_at", { ascending: false }).limit(500);
   const links = new Map<string, Link>(((linkRows ?? []) as Link[]).map((l) => [`${l.source_type}:${l.source_id}`, l]));
 
   const mark = (l: Link | undefined, owner: string, type: "reminder" | "task", id: string, eventId: string, patch: Record<string, unknown>) =>
@@ -64,15 +80,21 @@ export async function syncGoogle(db: SupabaseClient, gc: GcalClient, now: Date, 
   }
 
   // D: delete events whose source is gone, finished, acknowledged, cancelled, or no longer has a due time.
-  for (const l of links.values()) {
-    if (l.is_test || wanted.has(`${l.source_type}:${l.source_id}`) || l.status === "skipped_past") continue;
+  // Sources are looked up in batches (two queries in total, not one per link). Old history links are only rechecked once an hour.
+  const scan = linksToScan([...links.values()], wanted, now);
+  const [remRows, taskRows] = await Promise.all([
+    fetchByIds(db, "reminders", "id, remind_at, acked_at, status", scan.filter((l) => l.source_type === "reminder").map((l) => l.source_id)),
+    fetchByIds(db, "tasks", "id, title, deleted_at, status, due_time, current_deadline, estimated_minutes", scan.filter((l) => l.source_type === "task").map((l) => l.source_id)),
+  ]);
+  const remById = new Map(remRows.map((r) => [r.id as string, r])), taskById = new Map(taskRows.map((t) => [t.id as string, t]));
+  for (const l of scan) {
     if (calls >= MAX_CALLS) break;
     let keep = false;
     if (l.source_type === "reminder") {
-      const { data: r } = await db.from("reminders").select("remind_at, acked_at, status").eq("id", l.source_id).maybeSingle();
+      const r = remById.get(l.source_id);
       keep = !!r && !r.acked_at && r.status !== "cancelled" && new Date(r.remind_at as string).getTime() <= now.getTime();   // already fired: keep as history
     } else {
-      const { data: t } = await db.from("tasks").select("title, deleted_at, status, due_time, current_deadline, estimated_minutes").eq("id", l.source_id).maybeSingle();
+      const t = taskById.get(l.source_id);
       // Completed: keep the event as a record ("✅ Done: ...", no pop-ups) instead of deleting it, so the calendar shows what got done.
       if (t && !t.deleted_at && t.status === "completed" && t.due_time) {
         const sp = taskSpec(t as never, tzOf(l.owner_id), new Date(0), appUrl);

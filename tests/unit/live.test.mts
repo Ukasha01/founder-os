@@ -242,12 +242,13 @@ test("markdown symbols are removed from replies", () => {
   assert.equal(stripMarkdown("* **Wapsi** میں: * Email Nazir"), "- Wapsi میں:\n- Email Nazir");
   assert.equal(composeReply({ urdu: false, modelText: "**Done** `x`", done: [], waiting: [], errors: [] }), "Done x");
 });
-test("voice order: ElevenLabs first, Microsoft free voice next, Gemini last; switches respected", () => {
-  assert.deepEqual(ttsOrder({}), ["edge"]);
-  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g" }), ["elevenlabs", "edge", "gemini"]);
-  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_EDGE: "off" }), ["elevenlabs"]);
+test("voice order: ElevenLabs first, Gemini next; Microsoft free voice only when switched on", () => {
+  assert.deepEqual(ttsOrder({}), []);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g" }), ["elevenlabs", "gemini"]);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g", TTS_EDGE: "on" }), ["elevenlabs", "edge", "gemini"]);
+  assert.deepEqual(ttsOrder({ TTS_PROVIDER: "edge" }), ["edge"]);
   assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", TTS_PROVIDER: "off" }), []);
-  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g", TTS_PROVIDER: "gemini" }), ["gemini", "elevenlabs", "edge"]);
+  assert.deepEqual(ttsOrder({ ELEVENLABS_API_KEY: "e", GEMINI_API_KEY: "g", TTS_PROVIDER: "gemini" }), ["gemini", "elevenlabs"]);
 });
 test("spoken text is short and ends at a sentence", () => {
   const long = Array.from({ length: 12 }, (_, i) => `Task number ${i + 1} is due soon.`).join("\n");
@@ -281,12 +282,12 @@ test("telegram link code parsing and webhook secret", async () => {
   assert.equal(tgSecret("t").length, 48); assert.notEqual(tgSecret("a"), tgSecret("b"));
 });
 
-test("email backup skips daily summaries but sends real reminders", async () => {
-  const { worthEmailing } = await import("../../src/lib/email.ts");
-  assert.equal(worthEmailing("custom", "Check my Gmail"), true);
-  assert.equal(worthEmailing("deadline", "Due now: Report"), true);
-  assert.equal(worthEmailing("deadline", "4 overdue"), false);
-  assert.equal(worthEmailing("commitment", "Follow up: x"), false);
+test("email backup skips daily summaries but sends real reminders (same rule as repeats)", async () => {
+  const { naggable } = await import("../../src/lib/reminders.ts");
+  assert.equal(naggable("custom", "Check my Gmail"), true);
+  assert.equal(naggable("deadline", "Due now: Report"), true);
+  assert.equal(naggable("deadline", "4 overdue"), false);
+  assert.equal(naggable("commitment", "Follow up: x"), false);
 });
 
 test("nag schedule: 3, 5, 10, 15 minutes then stops; summaries are never repeated", async () => {

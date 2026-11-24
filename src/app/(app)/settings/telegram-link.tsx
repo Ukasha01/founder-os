@@ -12,7 +12,7 @@ export function TelegramLink() {
   useEffect(() => { refresh(); }, []);
   useEffect(() => { if (!code || st?.linked) return; const t = setInterval(refresh, 4000); return () => clearInterval(t); }, [code, st?.linked]);
   if (!st) return null;
-  if (!st.configured) return <p className="text-sm text-neutral-600">Telegram backup is not set up yet: add TELEGRAM_BOT_TOKEN in Vercel (see GUIDE.md), then redeploy.</p>;
+  if (!st.configured) return null;
   if (st.linked) return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-sm">Telegram is connected. Reminders are sent there too.</span>

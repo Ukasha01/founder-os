@@ -211,7 +211,7 @@ async function ttsEleven(text: string): Promise<TtsResult> {
 }
 
 // Microsoft's free neural voices (the same ones Edge uses), reached through the open-source `edge-tts-universal` package.
-// This is NOT an official, supported API: it can stop working without notice, so it is only used after ElevenLabs.
+// This is NOT an official, supported API: it can stop working without notice, so it is off by default (see ttsOrder).
 async function ttsEdge(text: string): Promise<TtsResult> {
   const urdu = /[\u0600-\u06FF]/.test(text);
   const voice = urdu ? (process.env.EDGE_TTS_VOICE_UR || "ur-PK-UzmaNeural") : (process.env.EDGE_TTS_VOICE_EN || "en-US-AriaNeural");
@@ -231,13 +231,14 @@ async function ttsEdge(text: string): Promise<TtsResult> {
   }
 }
 
-// Order tried for each reply: ElevenLabs (official, best), then Microsoft's free voice, then Gemini voice.
+// Order tried for each reply: ElevenLabs (official, best), then Gemini voice. Microsoft's free voice is unofficial, so it is off unless
+// you switch it on with TTS_EDGE=on (or choose it with TTS_PROVIDER=edge).
 export function ttsOrder(env: Record<string, string | undefined>): ("elevenlabs" | "edge" | "gemini")[] {
   const want = (env.TTS_PROVIDER ?? "").toLowerCase();
   if (want === "off") return [];
   const all: ("elevenlabs" | "edge" | "gemini")[] = [];
   if (env.ELEVENLABS_API_KEY) all.push("elevenlabs");
-  if (env.TTS_EDGE !== "off") all.push("edge");
+  if (env.TTS_EDGE === "on" || want === "edge") all.push("edge");
   if (env.GEMINI_API_KEY) all.push("gemini");
   return all.includes(want as "edge") ? [want as "elevenlabs" | "edge" | "gemini", ...all.filter((x) => x !== want)] : all;
 }
