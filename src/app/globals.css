@@ -1,58 +1,58 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
 
-/* Dark "command centre" theme. One accent (periwinkle) marks what you can act on; each workspace keeps its own hue.
-   Every screen reads colour from these tokens, so retuning here restyles the whole app consistently. */
-:root { color-scheme: dark; }
+/* Warm light theme: cream canvas, white cards, strong dark text, bold coloured numbers. One green accent marks what you can act on;
+   each workspace keeps its own hue. Every screen reads colour from these tokens, so retuning here restyles the whole app. */
+:root { color-scheme: light; }
 
 @theme {
-  --font-sans: ui-rounded, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", "Noto Nastaliq Urdu", sans-serif;
+  --font-sans: "Inter Variable", ui-rounded, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", "Noto Nastaliq Urdu", sans-serif;
 
-  --color-canvas: #070b16;
-  --color-surface: #0f1526;
-  --color-field: #0a0f1d;
-  --color-ink: #e9edfb;
-  --color-line: rgb(255 255 255 / 0.08);
-  --color-line-strong: rgb(255 255 255 / 0.16);
-  --color-tint: rgb(255 255 255 / 0.06);
-  --color-muted: #8f9ab8;
-  --color-accent: #8aa4ff;
-  --color-on-accent: #070b16;
+  --color-canvas: #fcfaea;
+  --color-surface: #ffffff;
+  --color-field: #ffffff;
+  --color-ink: #1d1b10;
+  --color-line: rgb(70 60 10 / 0.11);
+  --color-line-strong: rgb(70 60 10 / 0.24);
+  --color-tint: rgb(70 60 10 / 0.06);
+  --color-muted: #6f6a52;
+  --color-accent: #0f7d5c;
+  --color-on-accent: #ffffff;
 
-  /* Existing screens use neutral-*; the scale is inverted so the same classes read correctly on dark. */
-  --color-neutral-50: #111729;
-  --color-neutral-100: #171e33;
-  --color-neutral-200: #232c47;
-  --color-neutral-300: #313c5c;
-  --color-neutral-400: #6b7799;
-  --color-neutral-500: #8f9ab8;
-  --color-neutral-600: #aab3cc;
-  --color-neutral-700: #c3cadd;
-  --color-neutral-800: #dbe0ee;
-  --color-neutral-900: #eef1fb;
-  --color-neutral-950: #ffffff;
+  --color-neutral-50: #faf8ee;
+  --color-neutral-100: #f2efe0;
+  --color-neutral-200: #e6e2cd;
+  --color-neutral-300: #d3cfb6;
+  --color-neutral-400: #a29d84;
+  --color-neutral-500: #77725b;
+  --color-neutral-600: #5c5841;
+  --color-neutral-700: #47432f;
+  --color-neutral-800: #322f1f;
+  --color-neutral-900: #1d1b10;
+  --color-neutral-950: #100f08;
 
-  /* Status colours: translucent fills with light text so they stay readable on dark. */
-  --color-rose-50: rgb(244 63 94 / 0.10);   --color-rose-100: rgb(244 63 94 / 0.16);   --color-rose-700: #fda4af; --color-rose-800: #fda4af;
-  --color-red-50: rgb(239 68 68 / 0.10);    --color-red-700: #fca5a5;                  --color-red-800: #fca5a5;
-  --color-amber-50: rgb(245 158 11 / 0.10); --color-amber-100: rgb(245 158 11 / 0.16); --color-amber-300: rgb(245 158 11 / 0.45);
-  --color-amber-700: #fcd34d; --color-amber-800: #fbbf24; --color-amber-900: #fde68a;
-  --color-emerald-50: rgb(16 185 129 / 0.10); --color-emerald-100: rgb(16 185 129 / 0.16); --color-emerald-800: #6ee7b7;
-  --color-green-50: rgb(34 197 94 / 0.10);  --color-green-800: #86efac;
-  --color-sky-50: rgb(14 165 233 / 0.10);   --color-sky-100: rgb(14 165 233 / 0.16);   --color-sky-800: #7dd3fc; --color-sky-900: #bae6fd;
-  --color-orange-100: rgb(249 115 22 / 0.16); --color-orange-800: #fdba74;
+  /* Status colours: pale fills with deep, readable text. */
+  --color-rose-50: #fdeeec;   --color-rose-100: #fbdcd8;   --color-rose-700: #a8281c; --color-rose-800: #b3261a;
+  --color-red-50: #fdeeec;    --color-red-700: #a8281c;    --color-red-800: #a8281c;
+  --color-amber-50: #fff6de;  --color-amber-100: #fdeabb;  --color-amber-300: #f0c76a;
+  --color-amber-700: #8a5006; --color-amber-800: #8f5206; --color-amber-900: #6e3f04;
+  --color-emerald-50: #e6f6ee; --color-emerald-100: #cfeedd; --color-emerald-800: #0b6b4d;
+  --color-green-50: #e6f6ee;  --color-green-800: #0b6b4d;
+  --color-sky-50: #e8f2fc;    --color-sky-100: #d5e6f8;    --color-sky-800: #0c5a94; --color-sky-900: #0a4673;
+  --color-orange-100: #fde3cb; --color-orange-800: #9a4a08;
 
   /* Workspace hues: solid (dots, edges), tint (backgrounds), ink (text on tint). */
-  --color-ws-blue: #5b86ff;    --color-ws-blue-tint: rgb(91 134 255 / 0.15);    --color-ws-blue-ink: #a9c0ff;
-  --color-ws-orange: #f28a30;  --color-ws-orange-tint: rgb(242 138 48 / 0.15);  --color-ws-orange-ink: #ffb877;
-  --color-ws-pink: #e8528f;    --color-ws-pink-tint: rgb(232 82 143 / 0.15);    --color-ws-pink-ink: #ff9cc4;
-  --color-ws-violet: #8a6cff;  --color-ws-violet-tint: rgb(138 108 255 / 0.16); --color-ws-violet-ink: #c6b6ff;
-  --color-ws-green: #2daa6b;   --color-ws-green-tint: rgb(45 170 107 / 0.15);   --color-ws-green-ink: #7fe0ae;
-  --color-ws-teal: #14a7a0;    --color-ws-teal-tint: rgb(20 167 160 / 0.15);    --color-ws-teal-ink: #6fe3dc;
-  --color-ws-slate: #8a93ab;   --color-ws-slate-tint: rgb(138 147 171 / 0.14);  --color-ws-slate-ink: #b7c0d8;
+  --color-ws-blue: #3d6df2;    --color-ws-blue-tint: #e3ebff;    --color-ws-blue-ink: #1f46bf;
+  --color-ws-orange: #f28a30;  --color-ws-orange-tint: #ffe9d2;  --color-ws-orange-ink: #9a4a08;
+  --color-ws-pink: #e8528f;    --color-ws-pink-tint: #ffe1ee;    --color-ws-pink-ink: #a01f58;
+  --color-ws-violet: #7a5af2;  --color-ws-violet-tint: #ece6ff;  --color-ws-violet-ink: #4d30bd;
+  --color-ws-green: #2daa6b;   --color-ws-green-tint: #d8f3e5;   --color-ws-green-ink: #0f6a41;
+  --color-ws-teal: #14a7a0;    --color-ws-teal-tint: #d3f1ef;    --color-ws-teal-ink: #0a6b66;
+  --color-ws-slate: #8a93ab;   --color-ws-slate-tint: #ecebe0;   --color-ws-slate-ink: #4b4a3a;
 
-  --shadow-pop: 0 14px 34px -10px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
-  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 10px 26px -14px rgb(0 0 0 / 0.8);
-  --shadow-glow: 0 0 22px -4px rgb(138 164 255 / 0.65);
+  --shadow-pop: 0 18px 38px -14px rgb(50 40 0 / 0.38), 0 0 0 1px rgb(70 60 10 / 0.07);
+  --shadow-card: 0 1px 2px rgb(70 60 10 / 0.06), 0 12px 26px -16px rgb(70 60 10 / 0.30);
+  --shadow-glow: 0 8px 20px -6px rgb(15 125 92 / 0.55);
 }
 
 html { background: var(--color-canvas); }
@@ -64,17 +64,14 @@ body {
   line-height: 1.5;
   isolation: isolate;
 }
-/* Depth behind everything: two soft glows and a faint grid. Static, so it costs no battery. */
+/* Soft depth behind everything: two pale glows. Static, so it costs no battery. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(52rem 34rem at 88% -8%, rgb(120 150 255 / 0.20), transparent 62%),
-    radial-gradient(40rem 28rem at -8% 28%, rgb(56 225 198 / 0.08), transparent 60%),
-    linear-gradient(rgb(255 255 255 / 0.022) 1px, transparent 1px) 0 0 / 44px 44px,
-    linear-gradient(90deg, rgb(255 255 255 / 0.022) 1px, transparent 1px) 0 0 / 44px 44px;
-  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+    radial-gradient(46rem 28rem at 92% -6%, rgb(255 214 140 / 0.35), transparent 62%),
+    radial-gradient(38rem 26rem at -6% 30%, rgb(150 225 195 / 0.30), transparent 60%);
 }
-::selection { background: rgb(138 164 255 / 0.35); }
+::selection { background: rgb(15 125 92 / 0.25); }
 
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 summary { list-style: none; }
@@ -116,10 +113,10 @@ summary::-webkit-details-marker { display: none; }
 .orb-sphere {
   background:
     radial-gradient(circle at 32% 26%, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0) 34%),
-    radial-gradient(circle at 50% 55%, var(--orb-a, #8aa4ff), var(--orb-b, #3b52c9) 72%, var(--orb-c, #1b2566));
-  box-shadow: inset -6px -8px 14px rgb(0 0 0 / 0.35), inset 3px 3px 8px rgb(255 255 255 / 0.25), 0 10px 26px -8px var(--orb-a, #8aa4ff);
+    radial-gradient(circle at 50% 55%, var(--orb-a, #3fd0a0), var(--orb-b, #0f7d5c) 72%, var(--orb-c, #084a37));
+  box-shadow: inset -6px -8px 14px rgb(0 0 0 / 0.35), inset 3px 3px 8px rgb(255 255 255 / 0.25), 0 12px 26px -8px var(--orb-a, #0f7d5c);
 }
-.orb[data-state="off"], .orb[data-state="needs_tap"] { --orb-a: #5a6482; --orb-b: #2b3350; --orb-c: #151a2e; }
+.orb[data-state="off"], .orb[data-state="needs_tap"] { --orb-a: #aaa58c; --orb-b: #77725b; --orb-c: #47432f; }
 .orb[data-state="hearing"] { --orb-a: #ff7a9c; --orb-b: #c42a5c; --orb-c: #5c1230; }
 .orb[data-state="thinking"], .orb[data-state="transcribing"], .orb[data-state="starting"] { --orb-a: #ffcc66; --orb-b: #c9831a; --orb-c: #5c3a08; }
 .orb[data-state="speaking"] { --orb-a: #5ef0b8; --orb-b: #17a374; --orb-c: #08402f; }

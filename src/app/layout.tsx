@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Your private operating system.",
 };
 
-export const viewport: Viewport = { themeColor: "#070b16" };
+export const viewport: Viewport = { themeColor: "#fcfaea" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

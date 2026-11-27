@@ -31,7 +31,7 @@ function UserMenu({ email, signOut, placement }: { email: string; signOut: Props
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Account menu"
-        className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-white/[.06]">
+        className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-black/[.05]">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ws-violet text-sm font-semibold text-white">{(email[0] ?? "?").toUpperCase()}</span>
         <span className="hidden min-w-0 flex-1 truncate text-sm text-neutral-600 md:block">{email}</span>
         <Icon name="chevron" className="hidden h-4 w-4 text-muted md:block" />
@@ -61,7 +61,7 @@ export function AppNav({ workspaces, inboxCount, email, signOut }: Props) {
             const active = current?.key === s.key;
             return (
               <Link key={s.key} href={s.href} aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-2.5 py-2 text-[15px] font-medium transition ${active ? "bg-white/[.07] text-ink ring-1 ring-line-strong shadow-card" : "text-neutral-600 hover:bg-white/[.06] hover:text-ink"}`}>
+                className={`flex items-center gap-3 rounded-xl px-2.5 py-2 text-[15px] font-medium transition ${active ? "bg-surface text-ink ring-1 ring-line shadow-card" : "text-neutral-600 hover:bg-black/[.05] hover:text-ink"}`}>
                 <span className={`grid h-8 w-8 place-items-center rounded-lg transition ${active ? "bg-accent text-on-accent shadow-glow" : "bg-tint text-neutral-600"}`}><Icon name={s.icon} className="h-[18px] w-[18px]" /></span>
                 <span className="flex-1">{s.label}</span>
                 {s.key === "today" && inboxCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white">{inboxCount}</span>}
@@ -76,7 +76,7 @@ export function AppNav({ workspaces, inboxCount, email, signOut }: Props) {
               const c = wsStyle(w.color);
               return (
                 <li key={w.id}>
-                  <Link href={`/tasks?workspace=${w.id}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-white/[.06]">
+                  <Link href={`/tasks?workspace=${w.id}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-black/[.05]">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.dot}`} />
                     <span className="truncate">{w.name}</span>
                   </Link>

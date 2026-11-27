@@ -15,6 +15,7 @@ import { markNotificationsRead } from "./settings/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { TiltLink } from "@/components/tilt";
 import { Ring } from "@/components/ring";
+import { CountUp } from "@/components/count-up";
 
 // Dashboard: every widget reads real data; nothing is faked. Empty states say so.
 export default async function HomePage() {
@@ -73,7 +74,7 @@ export default async function HomePage() {
   const more = focus.length - shown.length;
   const openCount = focus.length;
   const summary = openCount === 0 ? "Nothing urgent right now." : `${openCount} ${openCount === 1 ? "thing needs" : "things need"} you today.`;
-  const stat = "rounded-2xl border border-line p-3.5 shadow-card";
+  const stat = "rounded-2xl border border-line px-3.5 pt-4 pb-3 shadow-card";
 
   return (
     <div className="max-w-5xl">
@@ -100,14 +101,17 @@ export default async function HomePage() {
       )}
 
       <div className="rise mt-5 grid grid-cols-3 gap-2.5" style={{ "--i": 2 } as React.CSSProperties}>
-        <TiltLink href="/inbox" className={`${stat} bg-ws-violet-tint`}>
-          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-violet-ink">{inbox ?? 0}</p><p className="text-xs text-ws-violet-ink/80">to sort in inbox</p>
+        <TiltLink href="/inbox" bar="bg-ws-violet" className={`${stat} bg-surface`}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-600">Inbox</p>
+          <p className="mt-1 whitespace-nowrap text-2xl font-bold tabular text-ws-violet-ink"><CountUp to={inbox ?? 0} /></p><p className="text-xs text-neutral-600">to sort</p>
         </TiltLink>
-        <TiltLink href="/time" className={`${stat} bg-ws-teal-tint`}>
-          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-teal-ink">{Math.floor(minutesToday / 60)}h {minutesToday % 60}m</p><p className="text-xs text-ws-teal-ink/80">logged today</p>
+        <TiltLink href="/time" bar="bg-ws-teal" className={`${stat} bg-surface`}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-600">Logged</p>
+          <p className="mt-1 whitespace-nowrap text-2xl font-bold tabular text-ws-teal-ink"><CountUp to={Math.floor(minutesToday / 60)} />h <CountUp to={minutesToday % 60} />m</p><p className="text-xs text-neutral-600">today</p>
         </TiltLink>
-        <TiltLink href="/habits" className={`${stat} bg-ws-orange-tint`}>
-          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-orange-ink">{habitsDoneCount}/{todaysHabits.length}</p><p className="text-xs text-ws-orange-ink/80">habits done</p>
+        <TiltLink href="/habits" bar="bg-ws-orange" className={`${stat} bg-surface`}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-600">Habits</p>
+          <p className="mt-1 whitespace-nowrap text-2xl font-bold tabular text-ws-orange-ink"><CountUp to={habitsDoneCount} />/{todaysHabits.length}</p><p className="text-xs text-neutral-600">done today</p>
         </TiltLink>
       </div>
 
@@ -118,7 +122,7 @@ export default async function HomePage() {
             {shown.map((t) => {
               const c = wsStyle(wsColor.get(t.workspace_id));
               return (
-                <li key={t.id} className={`flex items-center gap-3 rounded-xl border border-l-4 border-line bg-white/[.03] px-3 py-2.5 transition hover:bg-white/[.06] ${c.edge}`}>
+                <li key={t.id} className={`flex items-center gap-3 rounded-xl border border-l-4 border-line bg-black/[.03] px-3 py-2.5 transition hover:bg-black/[.05] ${c.edge}`}>
                   <form action={toggleTaskDone}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="done" value="false" /><TaskCheck done={false} label={t.title} /></form>
                   <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{t.title}</Link>
                   <span className={`${badge} ${t.tagClass} shrink-0`}>{t.tag}</span>

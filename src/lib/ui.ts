@@ -2,7 +2,7 @@
 export const input =
   "rounded-[10px] border border-line-strong bg-field px-3 py-2 text-[15px] text-ink placeholder:text-muted outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/25";
 export const btn =
-  "inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-line-strong bg-white/[.04] px-3.5 py-2 text-sm font-medium text-ink transition hover:bg-tint active:scale-[.98] disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-line-strong bg-black/[.04] px-3.5 py-2 text-sm font-medium text-ink transition hover:bg-tint active:scale-[.98] disabled:opacity-50";
 export const btnPrimary =
   "inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition hover:brightness-110 active:scale-[.98] disabled:opacity-60";
 export const card = "rounded-2xl border border-line bg-surface p-4 shadow-card";

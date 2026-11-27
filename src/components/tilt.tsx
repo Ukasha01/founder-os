@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef } from "react";
 
 // A link that leans toward the pointer (mouse only) and presses in when tapped. Pure transform, no re-render, no cost on phones.
-export function TiltLink({ href, className = "", children }: { href: string; className?: string; children: React.ReactNode }) {
+export function TiltLink({ href, className = "", bar = "", children }: { href: string; className?: string; bar?: string; children: React.ReactNode }) {
   const el = useRef<HTMLAnchorElement>(null);
   const frame = useRef(0);
   const move = (e: React.PointerEvent) => {
@@ -24,7 +24,8 @@ export function TiltLink({ href, className = "", children }: { href: string; cla
       <Link ref={el} href={href} onPointerMove={move} onPointerLeave={reset}
         className={`group relative block overflow-hidden transition-[transform,box-shadow] duration-150 ease-out will-change-transform active:scale-[.97] ${className}`}
         style={{ transformStyle: "preserve-3d" }}>
-        <span aria-hidden className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ background: "radial-gradient(circle at var(--gx,50%) var(--gy,50%), rgb(255 255 255 / .14), transparent 55%)" }} />
+        <span aria-hidden className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ background: "radial-gradient(circle at var(--gx,50%) var(--gy,50%), rgb(255 255 255 / .55), transparent 55%)" }} />
+        {bar && <span aria-hidden className={`absolute inset-x-0 top-0 h-1.5 ${bar}`} />}
         <span className="relative block">{children}</span>
       </Link>
     </div>

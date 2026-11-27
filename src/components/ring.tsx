@@ -5,9 +5,9 @@ export function Ring({ value, size = 64, label }: { value: number | null; size?:
   return (
     <div role="img" aria-label={label} className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(255 255 255 / .09)" strokeWidth="6" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(70 60 10 / .12)" strokeWidth="6" />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
-          strokeDasharray={len} strokeDashoffset={len * (1 - v / 100)} className="ring-fill" style={{ ["--ring-len" as string]: len, filter: `drop-shadow(0 0 5px ${color})` }} />
+          strokeDasharray={len} strokeDashoffset={len * (1 - v / 100)} className="ring-fill" style={{ ["--ring-len" as string]: len }} />
       </svg>
       <span className="absolute text-[15px] font-semibold tabular">{value === null ? "–" : v}</span>
     </div>

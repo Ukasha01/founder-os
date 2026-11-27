@@ -11,6 +11,7 @@
     "test:unit": "node --experimental-strip-types tests/unit/time.test.mts && node --experimental-strip-types tests/unit/habits.test.mts && node --experimental-strip-types tests/unit/score.test.mts && node --experimental-strip-types tests/unit/recurrence.test.mts && node --experimental-strip-types tests/unit/ai.test.mts && node --experimental-strip-types tests/unit/queue.test.mts && node --experimental-strip-types tests/unit/ics.test.mts && node --experimental-strip-types tests/unit/reminders.test.mts && node --experimental-strip-types tests/unit/voice.test.mts && node --experimental-strip-types tests/unit/live.test.mts && node --experimental-strip-types tests/unit/gcal.test.mts && node --experimental-strip-types tests/unit/claim.test.mts && node --experimental-strip-types tests/unit/gcalscan.test.mts"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "edge-tts-universal": "^1.4.0",
