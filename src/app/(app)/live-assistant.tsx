@@ -29,6 +29,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
   const [level, setLevel] = useState(0);
   const [barge, setBarge] = useState(false);
   const bargeRef = useRef(false);
+  const holdRef = useRef(false);   // true while the Quick Ask panel is open and using the microphone
   // Read the saved choice once after mount (localStorage does not exist during server rendering).
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { const v = store.get("fos-live-barge") === "1"; bargeRef.current = v; setBarge(v); }, []);
@@ -177,6 +178,7 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
 
   const onBlock = useCallback((block: Float32Array) => {
     const s = S.current;
+    if (holdRef.current) { s.vad.reset(); s.inUtt = false; s.duringSpeech = false; s.chunks = []; s.preroll = []; s.prerollLen = 0; return; }
     const rate = s.ctx!.sampleRate;
     const dt = (block.length / rate) * 1000;
     const level = rms(block);
@@ -276,6 +278,12 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
     // start/stop are stable enough; this must run once per mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
+
+  useEffect(() => {
+    const h = (e: Event) => { holdRef.current = (e as CustomEvent<boolean>).detail === true; if (holdRef.current) { stopSpeaking(); if (S.current.running) set("listening"); } };
+    window.addEventListener("fos:mic-hold", h);
+    return () => window.removeEventListener("fos:mic-hold", h);
+  }, [set, stopSpeaking]);
 
   if (!enabled) return null;
   const on = ui !== "off" && ui !== "needs_tap";
