@@ -200,6 +200,19 @@ export async function runRead(c: Ctx, name: ToolName, args: Json): Promise<Json>
       const { data } = await supabase.from("recurrence_rules").select("id, name, target_kind, freq, interval_count, by_weekday, start_date, end_date, is_paused, workspace_id").order("name").limit(60);
       return { rules: (data ?? []).map((r) => ({ ...r, workspace: wsName.get(r.workspace_id), workspace_id: undefined })) };
     }
+    case "list_reminders": {
+      const nowIso = new Date().toISOString();
+      const local = (iso: string) => `${dateInTz(new Date(iso), tz)} ${timeInTz(new Date(iso), tz)}`;
+      const [{ data: up }, { data: daily }, { data: recent }] = await Promise.all([
+        supabase.from("reminders").select("id, title, remind_at, status, kind").in("status", ["pending", "snoozed"]).not("dedupe_key", "like", "custom:daily:%").not("dedupe_key", "like", "gcal:%").gte("remind_at", new Date(Date.now() - 3600_000).toISOString()).order("remind_at").limit(30),
+        supabase.from("daily_reminders").select("id, title, at_time, weekdays").eq("active", true).order("at_time").limit(30),
+        supabase.from("reminders").select("title, remind_at, status, sent_at, acked_at, attempts, last_error").in("status", ["sent", "failed", "cancelled"]).lte("remind_at", nowIso).gte("remind_at", new Date(Date.now() - 48 * 3600_000).toISOString()).order("remind_at", { ascending: false }).limit(10),
+      ]);
+      return { now: `${today} ${timeInTz(new Date(), tz)}`,
+        upcoming: (up ?? []).map((r) => ({ id: r.id, type: "one-off", title: r.title, at: local(r.remind_at), status: r.status })),
+        repeating: (daily ?? []).map((r) => ({ id: r.id, type: "repeating", title: r.title, every: (r.weekdays && r.weekdays.length ? (r.weekdays as number[]).map((x) => DAY_NAMES[x]).join(", ") : "day"), time: String(r.at_time).slice(0, 5) })),
+        recently_fired: (recent ?? []).map((r) => ({ title: r.title, was_due: local(r.remind_at), status: r.status, delivered_at: r.sent_at ? local(r.sent_at) : null, acknowledged: !!r.acked_at, attempts: r.attempts, error: r.last_error })) };
+    }
     case "search": {
       const a = TOOLS.search.schema.parse(args); const like = `%${a.text.replace(/[%_,()]/g, "")}%`;
       const [tasks, goals, people, meetings, inbox, commits] = await Promise.all([
@@ -249,10 +262,39 @@ async function labelOf(c: Ctx, k: ItemKind, id: string, soft: boolean): Promise<
   return data ? short(String((data as unknown as Json)[k.col])) : null;
 }
 
-const NEW_TOOLS = ["update_commitment", "delete_item", "archive_item", "pause_recurring", "start_timer", "stop_timer", "manage_workspace", "meeting_attendee"];
+const NEW_TOOLS = ["set_daily_reminder", "cancel_reminder", "reschedule_reminder", "update_commitment", "delete_item", "archive_item", "pause_recurring", "start_timer", "stop_timer", "manage_workspace", "meeting_attendee"];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// A reminder id may belong to a one-off reminder or to a repeating rule; find which.
+async function findReminder(c: Ctx, id: string): Promise<{ kind: "daily"; title: string; time: string } | { kind: "once"; title: string; status: string } | null> {
+  const { data: d } = await c.supabase.from("daily_reminders").select("title, at_time").eq("id", id).eq("active", true).maybeSingle();
+  if (d) return { kind: "daily", title: String(d.title), time: String(d.at_time).slice(0, 5) };
+  const { data: r } = await c.supabase.from("reminders").select("title, status").eq("id", id).maybeSingle();
+  return r ? { kind: "once", title: String(r.title), status: String(r.status) } : null;
+}
 async function validateMore(c: Ctx, name: string, d: Json): Promise<Validated> {
   const q = (t: string) => `“${t}”`;
   switch (name) {
+    case "set_daily_reminder": {
+      const days = Array.isArray(d.weekdays) && d.weekdays.length && d.weekdays.length < 7 ? ` on ${[...new Set(d.weekdays as number[])].sort().map((x) => DAY_NAMES[x]).join(", ")}` : " every day";
+      return { ok: true, input: d, preview: `Remind you${days} at ${d.time}: ${q(String(d.title))}` };
+    }
+    case "cancel_reminder": {
+      const r = await findReminder(c, d.reminder_id as string); if (!r) return { ok: false, error: "That reminder does not exist." };
+      if (r.kind === "once" && !["pending", "snoozed"].includes(r.status)) return { ok: false, error: `That reminder already ${r.status === "cancelled" ? "was cancelled" : "went off"}.` };
+      return { ok: true, input: { ...d, kind: r.kind }, preview: r.kind === "daily" ? `Stop the repeating reminder ${q(r.title)} (${r.time} daily)` : `Cancel the reminder ${q(r.title)}` };
+    }
+    case "reschedule_reminder": {
+      const r = await findReminder(c, d.reminder_id as string); if (!r) return { ok: false, error: "That reminder does not exist." };
+      if (r.kind === "daily") {
+        if (!d.time) return { ok: false, error: "This is a repeating reminder: give the new time of day (HH:mm)." };
+        return { ok: true, input: { ...d, kind: "daily" }, preview: `Move the repeating reminder ${q(r.title)} to ${d.time} daily` };
+      }
+      if (!["pending", "snoozed"].includes(r.status)) return { ok: false, error: "That reminder already went off. Set a new one instead." };
+      const at = d.in_minutes ? new Date(Date.now() + Number(d.in_minutes) * 60_000) : d.at ? zonedToUtc(d.at as string, c.tz) : null;
+      if (!at || Number.isNaN(at.getTime())) return { ok: false, error: "Give the new date and time." };
+      if (at.getTime() < Date.now() - 60_000) return { ok: false, error: "That time has already passed." };
+      return { ok: true, input: { ...d, kind: "once", at_utc: at.toISOString() }, preview: `Move the reminder ${q(r.title)} to ${dateInTz(at, c.tz)} ${timeInTz(at, c.tz)}` };
+    }
     case "update_commitment": {
       const l = await labelOf(c, DEL.commitment, d.commitment_id as string, true); if (!l) return { ok: false, error: "That commitment does not exist." };
       const bits = [d.status && `status ${String(d.status).replace("_", " ")}`, d.due_date && `due ${d.due_date}`, d.follow_up_date && `follow up ${d.follow_up_date}`].filter(Boolean);
@@ -616,6 +658,35 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
       if (error) { if (error.code === "23505") return { type: "reminders", ids: [], verified: true }; return fail(error.message); }
       const { data: back } = await db.from("reminders").select("id").eq("id", data.id).maybeSingle();
       return { type: "reminders", ids: [data.id], verified: !!back };
+    }
+    case "set_daily_reminder": {
+      const { data, error } = await db.from("daily_reminders").insert({ title: i.title, at_time: i.time, weekdays: Array.isArray(i.weekdays) && (i.weekdays as number[]).length && (i.weekdays as number[]).length < 7 ? [...new Set(i.weekdays as number[])].sort() : null }).select("id").single();
+      if (error) return fail(error.message);
+      const { data: back } = await db.from("daily_reminders").select("id").eq("id", data.id).maybeSingle();
+      return { type: "daily_reminders", ids: [data.id], verified: !!back };
+    }
+    case "cancel_reminder": {
+      const id = i.reminder_id as string;
+      if (i.kind === "daily") {
+        const { error } = await db.from("daily_reminders").delete().eq("id", id); if (error) fail(error.message);
+        await db.from("reminders").delete().like("dedupe_key", `custom:daily:${id}:%`).eq("status", "pending");   // today's and tomorrow's pending copies
+        const { data: back } = await db.from("daily_reminders").select("id").eq("id", id).maybeSingle();
+        return { type: "daily_reminders", ids: [id], verified: !back };
+      }
+      const { error } = await db.from("reminders").update({ status: "cancelled" }).eq("id", id).in("status", ["pending", "snoozed"]); if (error) fail(error.message);
+      return { type: "reminders", ids: [id], verified: await rowIs("reminders", id, { status: "cancelled" }) };
+    }
+    case "reschedule_reminder": {
+      const id = i.reminder_id as string;
+      if (i.kind === "daily") {
+        const { error } = await db.from("daily_reminders").update({ at_time: i.time }).eq("id", id); if (error) fail(error.message);
+        await db.from("reminders").delete().like("dedupe_key", `custom:daily:${id}:%`).eq("status", "pending");   // recreated at the new time within a minute
+        const { data } = await db.from("daily_reminders").select("at_time").eq("id", id).maybeSingle();
+        return { type: "daily_reminders", ids: [id], verified: String(data?.at_time ?? "").slice(0, 5) === i.time };
+      }
+      const { error } = await db.from("reminders").update({ remind_at: i.at_utc, status: "pending", attempts: 0, sent_at: null, acked_at: null, next_nag_at: null, nag_count: 0, last_error: null }).eq("id", id); if (error) fail(error.message);
+      const { data } = await db.from("reminders").select("remind_at, status").eq("id", id).maybeSingle();
+      return { type: "reminders", ids: [id], verified: !!data && new Date(data.remind_at).getTime() === new Date(i.at_utc as string).getTime() && data.status === "pending" };
     }
     case "create_event": return insert("calendar_events", { title: i.title, event_type: i.event_type ?? "other", workspace_id: i.workspace_id ?? null, start_at: i.start_utc, end_at: i.end_utc ?? null, client_request_id: logId });
     case "create_recurring_task": {

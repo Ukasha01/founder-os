@@ -9,6 +9,7 @@ import { makeClient, parseGcalEnv, type GcalClient } from "@/lib/gcal";
 import { syncGoogle } from "@/lib/gcal-sync";
 import { pullGoogleAlerts } from "@/lib/gcal-pull";
 import { claimDelivery, claimNag } from "@/lib/claim";
+import { dailyOccurrences } from "@/lib/daily-reminders";
 
 let gcalClient: { key: string; client: GcalClient } | null = null;   // reused between warm invocations so the Google token is cached
 
@@ -66,6 +67,15 @@ export async function GET(req: NextRequest) {
       const { error } = await db.from("reminders").insert({ owner_id: u.owner_id, ...d, channels: pushOn ? ["in_app", "push"] : ["in_app"] });
       if (!error) stats.created++;
       else if (error.code !== "23505") stats.failed++; // 23505 = already planned earlier, which is fine
+    }
+  }
+
+  // 1a) Repeating reminders ("every night at 23:45"): each active rule owes today's and tomorrow's reminder.
+  for (const u of users ?? []) {
+    const { data: rules } = await db.from("daily_reminders").select("id, title, at_time, weekdays").eq("owner_id", u.owner_id).eq("active", true).limit(100);
+    for (const o of dailyOccurrences((rules ?? []) as never, now, u.timezone ?? "Asia/Karachi")) {
+      const { error } = await db.from("reminders").insert({ owner_id: u.owner_id, kind: "custom", title: o.title, remind_at: o.at.toISOString(), channels: pushOn ? ["in_app", "push"] : ["in_app"], dedupe_key: o.key });
+      if (!error) stats.created++; else if (error.code !== "23505") stats.failed++;
     }
   }
 

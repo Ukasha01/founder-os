@@ -23,6 +23,9 @@ export function localize(name: string, input: Record<string, unknown> | undefine
   if (name === "delete_task") return "ایک ٹاسک (ذیلی کاموں سمیت) حذف کرنا";
   if (name === "create_task") return `نیا ٹاسک: ${title}`;
   if (name === "set_reminder") return `یاد دہانی: ${String(input?.title ?? "")} — ${String(input?.at ?? "").replace("T", " ")}`;
+  if (name === "set_daily_reminder") return `روزانہ یاد دہانی: ${String(i.title ?? "")} — ${String(i.time ?? "")}`;
+  if (name === "cancel_reminder") return "ایک یاد دہانی منسوخ کرنا";
+  if (name === "reschedule_reminder") return "یاد دہانی کا وقت بدلنا";
   if (name === "complete_task") return "ایک ٹاسک مکمل کرنا";
   return "ایک تبدیلی";
 }

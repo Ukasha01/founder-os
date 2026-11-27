@@ -1,3 +1,4 @@
+import { looksMultiPart } from "./multipart.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { askLlm, type Msg, type ToolResult } from "./llm";
 import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } from "./tools";
@@ -81,6 +82,8 @@ async function handleDecision(c: Ctx, conversationId: string, decision: "yes" | 
 }
 
 type Proposal = { name: string; args: Record<string, unknown> };
+const MAX_PROPOSALS = 20;
+
 export type TurnResult =
   | { ok: false; error: string }
   | { ok: true; reply: string; pending: number; executed: number; refused: number; warning?: string; timing?: { llmMs: number; rounds: number; model: string; totalMs: number } };
@@ -139,7 +142,8 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const readLog: { tool_name: string; input: Record<string, unknown> }[] = [];
   let finalText = "", model = "", failure: string | null = null;
   const t0 = Date.now(); let llmMs = 0, rounds = 0;
-  for (let round = 0; round < 4; round++) {
+  const MAX_ROUNDS = 6;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
     const tl = Date.now(); rounds++;
     const r = await askLlm(msgs, context, { voice, userText: message, urdu });
     llmMs += Date.now() - tl;
@@ -147,7 +151,9 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
     model = `${r.provider}:${r.model}`;
     const reads = r.calls.filter((x) => isToolName(x.name) && isRead(x.name));
     for (const x of r.calls) if (!(isToolName(x.name) && isRead(x.name))) proposals.push({ name: x.name, args: x.args });
-    if (!reads.length) { finalText = r.text; break; }
+    // Nothing left to do: finished. After only writes, take one more look when the message has several parts, so the
+    // second and third parts are not dropped: the model sees what was queued and either adds the rest or says it is done.
+    if (!r.calls.length || (!reads.length && (!looksMultiPart(message) || round >= MAX_ROUNDS - 1))) { finalText = r.text; break; }
     // Answer every call the model made, in order: reads with real data (all at once), writes with "queued".
     const results: ToolResult[] = await Promise.all(r.calls.map(async (x): Promise<ToolResult> => {
       if (isToolName(x.name) && isRead(x.name)) {
@@ -159,7 +165,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
       return { id: x.id, name: x.name, output: { status: "queued: shown to the user for approval" } };
     }));
     msgs.push({ role: "assistant", text: r.text, calls: r.calls, raw: r.raw, provider: r.provider }, { role: "tool", results });
-    if (round === 3) finalText = r.text || "I looked up your data but ran out of steps. Please ask again, more specifically.";
+    if (round === MAX_ROUNDS - 1) finalText = r.text || "I looked up your data but ran out of steps. Please ask again, more specifically.";
   }
 
   if (failure && !proposals.length) {
@@ -179,7 +185,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const auto = !!st?.ai_auto_approve;
   let pending = 0, executed = 0, refused = 0;
   const done: string[] = [], waiting: string[] = [], errors: string[] = [];
-  for (const [i, x] of proposals.slice(0, 8).entries()) {
+  for (const [i, x] of proposals.slice(0, MAX_PROPOSALS).entries()) {
     const known = isToolName(x.name);
     const v = known ? await validateWrite(c, x.name as ToolName, x.args) : ({ ok: false, error: `Unknown action "${x.name}" was refused.` } as const);
     const confirm = known && needsConfirmation(x.name as ToolName);
@@ -193,7 +199,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   }
   if (failure) await supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "system", content: failure });
   // When changes were proposed or made, the reply is built from what really happened, not from the model's wording.
-  const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - 8), heard: voice ? message : undefined });
+  const reply = composeReply({ urdu, modelText: proposals.length ? "" : finalText, done, waiting, errors, dropped: Math.max(0, proposals.length - MAX_PROPOSALS), heard: voice ? message : undefined });
   if (aMsg && proposals.length) await supabase.from("ai_messages").update({ content: reply }).eq("id", aMsg.id);
   const timing = { llmMs, rounds, model, totalMs: Date.now() - t0 };
   console.log(`[timing] turn llm=${llmMs}ms rounds=${rounds} model=${model || "none"} total=${timing.totalMs}ms`);
