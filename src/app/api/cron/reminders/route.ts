@@ -7,6 +7,7 @@ import { tgSend, tgToken } from "@/lib/telegram";
 import { emailOn, sendEmail } from "@/lib/email";
 import { makeClient, parseGcalEnv, type GcalClient } from "@/lib/gcal";
 import { syncGoogle } from "@/lib/gcal-sync";
+import { pullGoogleAlerts } from "@/lib/gcal-pull";
 import { claimDelivery, claimNag } from "@/lib/claim";
 
 let gcalClient: { key: string; client: GcalClient } | null = null;   // reused between warm invocations so the Google token is cached
@@ -66,6 +67,17 @@ export async function GET(req: NextRequest) {
       if (!error) stats.created++;
       else if (error.code !== "23505") stats.failed++; // 23505 = already planned earlier, which is fine
     }
+  }
+
+  // 1b) Events created in Google Calendar itself (phone/web) become Founder OS reminders too, so they alert on every device.
+  const gp = parseGcalEnv(process.env);
+  if (gp.on && users?.[0]) {
+    try {
+      const key = `${gp.cfg.clientEmail}:${gp.cfg.calendarId}`;
+      if (gcalClient?.key !== key) gcalClient = { key, client: makeClient(gp.cfg) };
+      const p = await pullGoogleAlerts(db, gcalClient.client, now, users[0].owner_id as string, (users[0].timezone as string | null) ?? "Asia/Karachi", pushOn ? ["in_app", "push"] : ["in_app"]);
+      stats.gcal_pull_created = p.created; stats.gcal_pull_cancelled = p.cancelled; if (p.failed) stats.gcal_pull_failed = p.failed;
+    } catch { console.error("[gcal] pull step failed"); stats.gcal_pull_error = 1; }
   }
 
   type Payload = { title: string; body: string; url: string; rid: string; nag?: number };

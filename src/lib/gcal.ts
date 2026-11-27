@@ -2,6 +2,7 @@ import { createHash, createSign } from "node:crypto";
 import { z } from "zod";
 import { breaker } from "./ai/breaker.ts";
 import { dateInTz, timeInTz, zonedToUtc } from "./time.ts";
+import type { RawEvent } from "./gcal-view.ts";
 
 // Google Calendar mirror for reminders and timed tasks. Everything here is optional: with no valid configuration the
 // feature is simply off and nothing else in the app changes. Secrets are never logged or returned.
@@ -64,7 +65,9 @@ export function reminderQualifies(r: { kind: string; event_id?: string | null; t
 export function reminderSpec(r: { id: string; title: string; remind_at: string }, tz: string, now: Date, appUrl: string): { spec: EventSpec } | { skip: SkipReason } {
   const start = new Date(r.remind_at);
   if (!(start.getTime() > now.getTime())) return { skip: "past" };   // a popup in the past can never fire
-  return { spec: { kind: "reminder", id: r.id, title: r.title, start, end: new Date(start.getTime() + 15 * 60_000), tz, url: `${appUrl}/`, popups: [0] } };
+  // A phone can receive Google's alert late, so when there is room it also gets an early heads-up.
+  const popups = start.getTime() - now.getTime() >= 15 * 60_000 ? [10, 0] : [0];
+  return { spec: { kind: "reminder", id: r.id, title: r.title, start, end: new Date(start.getTime() + 15 * 60_000), tz, url: `${appUrl}/`, popups } };
 }
 export function taskSpec(t: { id: string; title: string; current_deadline: string; due_time: string; estimated_minutes?: number | null }, tz: string, now: Date, appUrl: string): { spec: EventSpec } | { skip: SkipReason } {
   const start = zonedToUtc(`${t.current_deadline}T${String(t.due_time).slice(0, 5)}`, tz);
@@ -99,7 +102,7 @@ export function makeClient(cfg: GcalConfig, f: Fetch = fetch, nowMs: () => numbe
     } catch { return { ok: false, status: 0, message: "Could not reach Google sign-in." }; }
   }
 
-  async function call(method: string, path: string, body?: unknown, okStatuses: number[] = []): Promise<ApiResult & { status?: number }> {
+  async function call(method: string, path: string, body?: unknown, okStatuses: number[] = []): Promise<ApiResult & { status?: number; data?: unknown }> {
     if (breaker.open("gcal")) return { ok: false, status: 0, message: "Google Calendar paused after repeated sign-in/permission errors." };
     const t = await getToken();
     if (!t.ok) { if (t.status === 400 || t.status === 401 || t.status === 403) breaker.fail("gcal", { limit: 1, coolMs: 600_000 }); return t; }
@@ -107,7 +110,8 @@ export function makeClient(cfg: GcalConfig, f: Fetch = fetch, nowMs: () => numbe
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const r = await f(url, { method, headers: { authorization: `Bearer ${t.value}`, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(8000) });
-        if (r.ok || okStatuses.includes(r.status)) return { ok: true, status: r.status };
+        if (r.ok) { const data = r.status === 204 ? undefined : await r.json().catch(() => undefined); return data === undefined ? { ok: true, status: r.status } : { ok: true, status: r.status, data }; }
+        if (okStatuses.includes(r.status)) return { ok: true, status: r.status };
         if ((r.status === 429 || r.status >= 500) && attempt < 2) { await new Promise((res) => setTimeout(res, 300 * (attempt + 1))); continue; }
         const j = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
         if (r.status === 401 || r.status === 403) breaker.fail("gcal", { limit: 1, coolMs: 600_000 });
@@ -120,12 +124,37 @@ export function makeClient(cfg: GcalConfig, f: Fetch = fetch, nowMs: () => numbe
   return {
     // Create with our own id; if it already exists (409, including a deleted one) replace it, which also revives it.
     async upsert(eventId: string, body: ReturnType<typeof buildEvent>): Promise<ApiResult> {
+      const plain = (r: ApiResult & { status?: number }): ApiResult => (r.ok ? ({ ok: true, status: r.status } as ApiResult) : r);
       const c = await call("POST", "", { id: eventId, ...body }, []);
-      if (c.ok || c.status !== 409) return c;
-      return call("PUT", `/${encodeURIComponent(eventId)}`, { id: eventId, ...body });
+      if (c.ok || c.status !== 409) return plain(c);
+      return plain(await call("PUT", `/${encodeURIComponent(eventId)}`, { id: eventId, ...body }));
     },
     // Already gone (404/410) counts as deleted.
     remove: (eventId: string) => call("DELETE", `/${encodeURIComponent(eventId)}`, undefined, [404, 410]),
+    // Everything on the calendar between two instants, recurring events already expanded into single occurrences.
+    async list(timeMinIso: string, timeMaxIso: string): Promise<{ ok: true; items: RawEvent[] } | { ok: false; status: number; message: string }> {
+      const items: RawEvent[] = [];
+      let pageToken = "";
+      for (let page = 0; page < 4; page++) {
+        const q = new URLSearchParams({ timeMin: timeMinIso, timeMax: timeMaxIso, singleEvents: "true", orderBy: "startTime", maxResults: "250", ...(pageToken ? { pageToken } : {}) });
+        const r = await call("GET", `?${q}`);
+        if (!r.ok) return r;
+        const d = (r.data ?? {}) as { items?: RawEvent[]; nextPageToken?: string };
+        items.push(...(d.items ?? []));
+        if (!d.nextPageToken) break;
+        pageToken = d.nextPageToken;
+      }
+      return { ok: true, items };
+    },
+    async get(eventId: string): Promise<{ ok: true; item: RawEvent } | { ok: false; status: number; message: string }> {
+      const r = await call("GET", `/${encodeURIComponent(eventId)}`);
+      return r.ok ? { ok: true, item: (r.data ?? {}) as RawEvent } : r;
+    },
+    async create(body: unknown): Promise<{ ok: true; item: RawEvent } | { ok: false; status: number; message: string }> {
+      const r = await call("POST", "", body);
+      return r.ok ? { ok: true, item: (r.data ?? {}) as RawEvent } : r;
+    },
+    patch: (eventId: string, body: unknown) => call("PATCH", `/${encodeURIComponent(eventId)}`, body),
   };
 }
 export type GcalClient = ReturnType<typeof makeClient>;

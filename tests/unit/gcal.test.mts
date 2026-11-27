@@ -27,7 +27,7 @@ test("event id is deterministic and Google-valid; body uses Karachi time and pop
   const r = reminderSpec({ id: "r1", title: "Check Gmail", remind_at: "2026-11-23T09:00:00Z" }, "Asia/Karachi", NOW, "https://app");
   assert.ok("spec" in r); const b = buildEvent(r.spec);
   assert.equal(b.start.dateTime, "2026-11-23T14:00:00"); assert.equal(b.start.timeZone, "Asia/Karachi"); assert.equal(b.end.dateTime, "2026-11-23T14:15:00");
-  assert.deepEqual(b.reminders, { useDefault: false, overrides: [{ method: "popup", minutes: 0 }] });
+  assert.deepEqual(b.reminders, { useDefault: false, overrides: [{ method: "popup", minutes: 10 }, { method: "popup", minutes: 0 }] });   // an hour away: heads-up plus on time
   assert.equal(b.extendedProperties.private.fosTest, "0");
   const t = taskSpec({ id: "t1", title: "Report", current_deadline: "2026-11-24", due_time: "14:00:00", estimated_minutes: 60 }, "Asia/Karachi", NOW, "https://app");
   assert.ok("spec" in t); const tb = buildEvent(t.spec);
