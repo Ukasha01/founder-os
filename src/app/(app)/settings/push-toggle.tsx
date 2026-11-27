@@ -53,7 +53,7 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
   };
   return (
     <div>
-      <button onClick={state === "on" ? turnOff : turnOn} className="inline-flex items-center rounded-[10px] bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-[#2c3659]">
+      <button onClick={state === "on" ? turnOff : turnOn} className="inline-flex items-center rounded-[10px] bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:brightness-110">
         {state === "on" ? "Turn off notifications on this device" : "Turn on notifications on this device"}
       </button>
       {state === "on" && (

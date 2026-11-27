@@ -279,9 +279,8 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
 
   if (!enabled) return null;
   const on = ui !== "off" && ui !== "needs_tap";
-  const busy = ui === "transcribing" || ui === "thinking";
-  return (
-    <div className="fixed bottom-20 left-4 z-30 flex max-w-[calc(100vw-7rem)] flex-col items-start gap-2 md:right-8 md:bottom-24 md:left-auto md:items-end" dir="ltr">
+    return (
+    <div className="fixed bottom-24 left-4 z-30 flex max-w-[calc(100vw-7rem)] flex-col items-start gap-2 md:right-8 md:bottom-24 md:left-auto md:items-end" dir="ltr">
       {open && (heard || reply || notice) && (
         <div className="w-80 max-w-full rounded-2xl border border-line bg-surface p-3 text-sm shadow-pop" role="status" aria-live="polite">
           {notice && <p className="mb-2 rounded-lg bg-amber-50 p-2 text-amber-900">{notice}</p>}
@@ -293,13 +292,16 @@ export function LiveAssistant({ enabled }: { enabled: boolean }) {
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => { const v = !bargeRef.current; bargeRef.current = v; setBarge(v); store.set("fos-live-barge", v ? "1" : "0"); }} className="rounded-full border border-line-strong bg-surface/95 px-3 py-1.5 text-xs shadow-pop" aria-pressed={barge} title="Only turn this on with a headset; on speakers it hears the assistant's own voice">Voice interrupt: {barge ? "on (headset)" : "off"}</button>
         {ui === "speaking" && <button type="button" onClick={() => { stopSpeaking(); set("listening"); }} className="rounded-full border border-line-strong bg-surface px-3 py-2 text-sm font-medium shadow-pop active:scale-95">Stop</button>}
-        <button type="button" aria-pressed={on}
+        <button type="button" aria-pressed={on} data-state={ui}
           aria-label={on ? "Turn voice assistant off" : "Turn voice assistant on"}
           onClick={() => { if (on) { store.set("fos-live", "0"); stop(); } else void start(); }}
           onDoubleClick={() => setOpen((o) => !o)}
-          className={`relative grid h-14 w-14 place-items-center rounded-full text-white shadow-pop transition active:scale-95 ${!on ? "bg-neutral-500" : ui === "hearing" ? "bg-rose-500" : ui === "speaking" ? "bg-emerald-600" : busy ? "bg-amber-500" : "bg-ink"}`}>
-          {on && ui === "listening" && <span aria-hidden className="absolute inset-0 rounded-full bg-ink/30" style={{ transform: `scale(${1 + level * 0.5})`, transition: "transform 100ms" }} />}
-          <svg viewBox="0 0 24 24" className="relative h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          className="orb relative grid h-16 w-16 place-items-center rounded-full text-white transition active:scale-95">
+          <span aria-hidden className="orb-ring absolute inset-0 rounded-full opacity-0" style={{ background: "radial-gradient(circle, var(--orb-a) 0%, transparent 70%)" }} />
+          <span aria-hidden className="orb-ring orb-ring-2 absolute inset-0 rounded-full opacity-0" style={{ background: "radial-gradient(circle, var(--orb-a) 0%, transparent 70%)" }} />
+          <span aria-hidden className="orb-spin absolute -inset-1 rounded-full opacity-0" style={{ background: "conic-gradient(from 0deg, transparent 0 70%, var(--orb-a))", mask: "radial-gradient(circle, transparent 62%, #000 64%)", WebkitMask: "radial-gradient(circle, transparent 62%, #000 64%)" }} />
+          <span aria-hidden className="orb-sphere absolute inset-1.5 rounded-full" style={{ transform: `scale(${on && ui === "listening" ? 1 + level * 0.18 : 1})`, transition: "transform 100ms" }} />
+          <svg viewBox="0 0 24 24" className="relative h-6 w-6 drop-shadow" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             {on ? <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></> : <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M4 4l16 16" /></>}
           </svg>
         </button>

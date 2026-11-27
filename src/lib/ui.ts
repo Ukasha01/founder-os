@@ -1,11 +1,11 @@
 // Shared UI classes and label maps. One place to change the look of every screen.
 export const input =
-  "rounded-[10px] border border-line-strong bg-surface px-3 py-2 text-[15px] text-ink placeholder:text-muted outline-none transition focus:border-ink focus:ring-2 focus:ring-ink/15";
+  "rounded-[10px] border border-line-strong bg-field px-3 py-2 text-[15px] text-ink placeholder:text-muted outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/25";
 export const btn =
-  "inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-line-strong bg-surface px-3.5 py-2 text-sm font-medium text-ink transition hover:bg-tint active:scale-[.98] disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-line-strong bg-white/[.04] px-3.5 py-2 text-sm font-medium text-ink transition hover:bg-tint active:scale-[.98] disabled:opacity-50";
 export const btnPrimary =
-  "inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2c3659] active:scale-[.98] disabled:opacity-60";
-export const card = "rounded-2xl border border-line bg-surface p-4";
+  "inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition hover:brightness-110 active:scale-[.98] disabled:opacity-60";
+export const card = "rounded-2xl border border-line bg-surface p-4 shadow-card";
 
 // Workspace identity: every screen shows a workspace with its own hue.
 export type WsStyle = { dot: string; tint: string; ink: string; edge: string; label: string };

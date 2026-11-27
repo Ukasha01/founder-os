@@ -62,7 +62,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">History</h1>
         <nav className="flex gap-1 text-sm" aria-label="Range">
-          {RANGES.map((d) => <Link key={d} href={`/history?days=${d}${showDeleted ? "&deleted=1" : ""}`} className={`rounded-lg border px-3 py-1.5 ${d === days ? "border-ink bg-ink text-white" : "border-line-strong"}`}>{d} days</Link>)}
+          {RANGES.map((d) => <Link key={d} href={`/history?days=${d}${showDeleted ? "&deleted=1" : ""}`} className={`rounded-lg border px-3 py-1.5 ${d === days ? "border-accent bg-accent text-on-accent" : "border-line-strong"}`}>{d} days</Link>)}
         </nav>
       </div>
       <p className="text-sm text-neutral-600">Last {days} days, Karachi time. Everything you add or finish is kept here, even after it disappears from the calendar.</p>

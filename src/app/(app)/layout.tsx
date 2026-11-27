@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-dvh md:flex">
       <AppNav workspaces={workspaces} inboxCount={inboxCount} email={(claims.email as string | undefined) ?? ""} signOut={signOut} />
-      <main className="min-w-0 flex-1 px-4 pt-3 pb-32 md:px-10 md:pt-8 md:pb-12">
+      <main className="min-w-0 flex-1 px-4 pt-3 pb-40 md:px-10 md:pt-8 md:pb-12">
         <div className="max-w-5xl">
           <SectionTabs inboxCount={inboxCount} />
           {children}

@@ -13,6 +13,8 @@ import { toggleTaskDone } from "./tasks/actions";
 import { toggleHabitToday } from "./habits/actions";
 import { markNotificationsRead } from "./settings/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { TiltLink } from "@/components/tilt";
+import { Ring } from "@/components/ring";
 
 // Dashboard: every widget reads real data; nothing is faked. Empty states say so.
 export default async function HomePage() {
@@ -66,23 +68,29 @@ export default async function HomePage() {
   const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone: tz }).format(now);
 
   const total = day.result.total;
-  const ring = total === null ? "bg-neutral-100 text-neutral-500" : total >= 70 ? "bg-emerald-100 text-emerald-800" : total >= 40 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800";
   const head2 = "text-[15px] font-semibold";
+  const shown = focus.slice(0, 5);
+  const more = focus.length - shown.length;
+  const openCount = focus.length;
+  const summary = openCount === 0 ? "Nothing urgent right now." : `${openCount} ${openCount === 1 ? "thing needs" : "things need"} you today.`;
+  const stat = "rounded-2xl border border-line p-3.5 shadow-card";
 
   return (
     <div className="max-w-5xl">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="rise flex items-center justify-between gap-4" style={{ "--i": 0 } as React.CSSProperties}>
+        <div className="min-w-0">
           <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">{greeting}{profile?.display_name ? `, ${profile.display_name}` : ""}</h1>
           <p className="text-neutral-500">{date}</p>
+          <p className="mt-1 text-sm text-neutral-700">{summary}</p>
         </div>
-        <Link href="/review" className={`rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-95 ${ring}`}>
-          {total === null ? "Day score: no data yet" : `Day score ${total}/100`}
+        <Link href="/review" className="flex shrink-0 flex-col items-center gap-1 text-xs text-neutral-500 transition active:scale-95">
+          <Ring value={total} size={68} label={total === null ? "Day score: no data yet" : `Day score ${total} out of 100`} />
+          Day score
         </Link>
       </div>
 
       {unread && unread.length > 0 && (
-        <section className="mt-5 rounded-2xl bg-amber-50 p-4">
+        <section className="rise mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4" style={{ "--i": 1 } as React.CSSProperties}>
           <div className="flex items-center justify-between"><h2 className="text-[15px] font-semibold text-amber-900">Reminders</h2>
             <form action={markNotificationsRead}><SubmitButton>Mark all read</SubmitButton></form></div>
           <ul className="mt-2 flex flex-col gap-1.5 text-sm">
@@ -91,38 +99,39 @@ export default async function HomePage() {
         </section>
       )}
 
-      <div className="mt-5 grid grid-cols-3 gap-2.5">
-        <Link href="/inbox" className="rounded-2xl bg-ws-violet-tint p-3.5 transition hover:brightness-95">
-          <p className="text-2xl font-semibold text-ws-violet-ink">{inbox ?? 0}</p><p className="text-xs text-ws-violet-ink/80">in inbox to sort</p>
-        </Link>
-        <Link href="/time" className="rounded-2xl bg-ws-teal-tint p-3.5 transition hover:brightness-95">
-          <p className="text-2xl font-semibold text-ws-teal-ink">{Math.floor(minutesToday / 60)}h {minutesToday % 60}m</p><p className="text-xs text-ws-teal-ink/80">logged today</p>
-        </Link>
-        <Link href="/habits" className="rounded-2xl bg-ws-orange-tint p-3.5 transition hover:brightness-95">
-          <p className="text-2xl font-semibold text-ws-orange-ink">{habitsDoneCount}/{todaysHabits.length}</p><p className="text-xs text-ws-orange-ink/80">habits done</p>
-        </Link>
+      <div className="rise mt-5 grid grid-cols-3 gap-2.5" style={{ "--i": 2 } as React.CSSProperties}>
+        <TiltLink href="/inbox" className={`${stat} bg-ws-violet-tint`}>
+          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-violet-ink">{inbox ?? 0}</p><p className="text-xs text-ws-violet-ink/80">to sort in inbox</p>
+        </TiltLink>
+        <TiltLink href="/time" className={`${stat} bg-ws-teal-tint`}>
+          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-teal-ink">{Math.floor(minutesToday / 60)}h {minutesToday % 60}m</p><p className="text-xs text-ws-teal-ink/80">logged today</p>
+        </TiltLink>
+        <TiltLink href="/habits" className={`${stat} bg-ws-orange-tint`}>
+          <p className="whitespace-nowrap text-xl font-semibold tabular sm:text-2xl text-ws-orange-ink">{habitsDoneCount}/{todaysHabits.length}</p><p className="text-xs text-ws-orange-ink/80">habits done</p>
+        </TiltLink>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
-        <section className={`${card} lg:col-span-3`}>
+        <section className={`${card} rise lg:col-span-3`} style={{ "--i": 3 } as React.CSSProperties}>
           <div className="flex items-center justify-between"><h2 className={head2}>Focus for today</h2><Link href="/tasks" className="text-sm text-neutral-500 hover:text-ink">All tasks</Link></div>
           <ul className="mt-3 flex flex-col gap-2">
-            {focus.map((t) => {
+            {shown.map((t) => {
               const c = wsStyle(wsColor.get(t.workspace_id));
               return (
-                <li key={t.id} className={`flex items-center gap-3 rounded-xl border border-l-4 border-line px-3 py-2.5 ${c.edge}`}>
+                <li key={t.id} className={`flex items-center gap-3 rounded-xl border border-l-4 border-line bg-white/[.03] px-3 py-2.5 transition hover:bg-white/[.06] ${c.edge}`}>
                   <form action={toggleTaskDone}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="done" value="false" /><TaskCheck done={false} label={t.title} /></form>
                   <Link href={`/tasks/${t.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{t.title}</Link>
                   <span className={`${badge} ${t.tagClass} shrink-0`}>{t.tag}</span>
                 </li>
               );
             })}
-            {!focus.length && <li className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">Nothing urgent. Pick something from <Link href="/tasks" className="underline">your tasks</Link> or capture a new idea.</li>}
+            {more > 0 && <li><Link href="/tasks" className="text-sm text-neutral-500 hover:text-ink">+{more} more in Tasks</Link></li>}
+            {!focus.length && <li className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">Nothing urgent. Pick something from <Link href="/tasks" className="underline">your tasks</Link> or press Capture to add a new idea.</li>}
           </ul>
         </section>
 
         <div className="flex flex-col gap-4 lg:col-span-2">
-          <section className={card}>
+          <section className={`${card} rise`} style={{ "--i": 4 } as React.CSSProperties}>
             <h2 className={head2}>Habits</h2>
             <ul className="mt-3 flex flex-col gap-2">
               {todaysHabits.map((h) => {
@@ -140,7 +149,7 @@ export default async function HomePage() {
               {!todaysHabits.length && <li className="text-sm text-neutral-500">No habits yet. <Link href="/habits" className="underline">Add one</Link>.</li>}
             </ul>
           </section>
-          <section className={card}>
+          <section className={`${card} rise`} style={{ "--i": 5 } as React.CSSProperties}>
             <h2 className={head2}>Coming up</h2>
             <ul className="mt-3 flex flex-col gap-2 text-sm">
               {meetingsNext?.map((m) => <li key={m.id} className="flex items-center justify-between gap-2"><Link href={`/meetings/${m.id}`} className="truncate font-medium hover:underline">{m.title}</Link><span className={`${badge} shrink-0 bg-ws-blue-tint text-ws-blue-ink`}>{fmt.format(new Date(m.starts_at!))}</span></li>)}
@@ -151,24 +160,25 @@ export default async function HomePage() {
         </div>
       </div>
 
-      <h2 className="mt-8 mb-3 text-[15px] font-semibold">Workspaces</h2>
-      {workspaces && workspaces.length > 0 ? (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {workspaces.map((w) => {
-            const c = wsStyle(w.color);
-            return (
-              <li key={w.id}>
-                <Link href={`/workspaces/${w.id}`} className={`block rounded-2xl p-4 transition hover:brightness-95 ${c.tint}`}>
-                  <span className={`flex items-center gap-2 font-semibold ${c.ink}`}><span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} />{w.name}</span>
-                  {w.description && <span className={`mt-1 block text-sm opacity-80 ${c.ink}`}>{w.description}</span>}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="text-neutral-500">No workspaces found. Check that the database migrations ran.</p>
-      )}
+      <div className="rise mt-6" style={{ "--i": 6 } as React.CSSProperties}>
+        <h2 className="mb-2 text-sm font-semibold text-neutral-500">Jump to a workspace</h2>
+        {workspaces && workspaces.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {workspaces.map((w) => {
+              const c = wsStyle(w.color);
+              return (
+                <li key={w.id}>
+                  <Link href={`/workspaces/${w.id}`} className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition active:scale-95 hover:brightness-125 ${c.tint} ${c.ink}`}>
+                    <span className={`h-2 w-2 rounded-full ${c.dot}`} />{w.name}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-neutral-500">No workspaces found. Check that the database migrations ran.</p>
+        )}
+      </div>
     </div>
   );
 }

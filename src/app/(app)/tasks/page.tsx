@@ -56,7 +56,7 @@ export default async function TasksPage({
       )}
 
       <nav aria-label="Workspace filter" className="mt-4 flex flex-wrap gap-2 text-sm">
-        <Link href="/tasks" className={`rounded-full px-3.5 py-1.5 font-medium transition ${!wsFilter ? "bg-ink text-white" : "bg-surface text-neutral-600 ring-1 ring-line hover:ring-line-strong"}`}>All</Link>
+        <Link href="/tasks" className={`rounded-full px-3.5 py-1.5 font-medium transition ${!wsFilter ? "bg-accent text-on-accent" : "bg-surface text-neutral-600 ring-1 ring-line hover:ring-line-strong"}`}>All</Link>
         {workspaces?.map((w) => {
           const c = wsStyle(w.color);
           const on = wsFilter === w.id;

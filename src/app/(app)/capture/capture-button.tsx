@@ -44,11 +44,11 @@ export function CaptureButton({ workspaces }: { workspaces: Ws[] }) {
       <button
         onClick={open}
         aria-label="Quick Capture"
-        className="fixed right-4 bottom-20 z-20 inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-pop transition hover:bg-[#2c3659] active:scale-95 md:right-8 md:bottom-8"
+        className="fixed right-4 bottom-24 z-20 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-on-accent shadow-pop transition hover:brightness-110 active:scale-95 md:right-8 md:bottom-8"
       >
         <Icon name="plus" className="h-4 w-4" />Capture
       </button>
-      <dialog ref={dialog} className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-surface p-5 text-ink shadow-pop backdrop:bg-ink/40 backdrop:backdrop-blur-[2px]">
+      <dialog ref={dialog} className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-surface p-5 text-ink shadow-pop backdrop:bg-black/60 backdrop:backdrop-blur-[2px]">
         <form action={action} onSubmit={onSubmit} className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold tracking-tight">Quick capture</h2>
           <input type="hidden" name="client_request_id" value={requestId} />

@@ -13,7 +13,7 @@ type Props = { workspaces: Ws[]; inboxCount: number; email: string; signOut: () 
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 px-2 py-1">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-base font-bold text-white">F</span>
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-base font-bold text-on-accent shadow-glow">F</span>
       <span className="text-[17px] font-semibold tracking-tight">Founder OS</span>
     </Link>
   );
@@ -31,7 +31,7 @@ function UserMenu({ email, signOut, placement }: { email: string; signOut: Props
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Account menu"
-        className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-white/70">
+        className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-white/[.06]">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ws-violet text-sm font-semibold text-white">{(email[0] ?? "?").toUpperCase()}</span>
         <span className="hidden min-w-0 flex-1 truncate text-sm text-neutral-600 md:block">{email}</span>
         <Icon name="chevron" className="hidden h-4 w-4 text-muted md:block" />
@@ -61,8 +61,8 @@ export function AppNav({ workspaces, inboxCount, email, signOut }: Props) {
             const active = current?.key === s.key;
             return (
               <Link key={s.key} href={s.href} aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-2.5 py-2 text-[15px] font-medium transition ${active ? "bg-surface text-ink ring-1 ring-line" : "text-neutral-600 hover:bg-white/70"}`}>
-                <span className={`grid h-8 w-8 place-items-center rounded-lg transition ${active ? "bg-ink text-white" : "bg-tint text-neutral-600"}`}><Icon name={s.icon} className="h-[18px] w-[18px]" /></span>
+                className={`flex items-center gap-3 rounded-xl px-2.5 py-2 text-[15px] font-medium transition ${active ? "bg-white/[.07] text-ink ring-1 ring-line-strong shadow-card" : "text-neutral-600 hover:bg-white/[.06] hover:text-ink"}`}>
+                <span className={`grid h-8 w-8 place-items-center rounded-lg transition ${active ? "bg-accent text-on-accent shadow-glow" : "bg-tint text-neutral-600"}`}><Icon name={s.icon} className="h-[18px] w-[18px]" /></span>
                 <span className="flex-1">{s.label}</span>
                 {s.key === "today" && inboxCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white">{inboxCount}</span>}
               </Link>
@@ -76,7 +76,7 @@ export function AppNav({ workspaces, inboxCount, email, signOut }: Props) {
               const c = wsStyle(w.color);
               return (
                 <li key={w.id}>
-                  <Link href={`/tasks?workspace=${w.id}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-white/70">
+                  <Link href={`/tasks?workspace=${w.id}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-white/[.06]">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.dot}`} />
                     <span className="truncate">{w.name}</span>
                   </Link>
@@ -95,12 +95,12 @@ export function AppNav({ workspaces, inboxCount, email, signOut }: Props) {
       </header>
 
       {/* Mobile bottom bar */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-surface px-1 pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav aria-label="Main" className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 flex rounded-2xl border border-line-strong bg-surface/95 px-1 shadow-pop backdrop-blur md:hidden">
         {SECTIONS.map((s) => {
           const active = current?.key === s.key;
           return (
             <Link key={s.key} href={s.href} aria-current={active ? "page" : undefined} className="relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium">
-              <span className={`grid h-7 w-12 place-items-center rounded-full transition ${active ? "bg-ink text-white" : "text-neutral-500"}`}><Icon name={s.icon} className="h-[18px] w-[18px]" /></span>
+              <span className={`grid h-7 w-12 place-items-center rounded-full transition ${active ? "bg-accent text-on-accent shadow-glow" : "text-neutral-500"}`}><Icon name={s.icon} className="h-[18px] w-[18px]" /></span>
               <span className={active ? "text-ink" : "text-neutral-500"}>{s.label}</span>
               {s.key === "today" && inboxCount > 0 && <span className="absolute top-1 right-[22%] grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{inboxCount}</span>}
             </Link>

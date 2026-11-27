@@ -57,7 +57,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <h2 className="font-medium">Your data</h2>
         <p className="mt-1 text-sm text-neutral-600">Your data is yours. Download a full copy at any time, or take your calendar into Google Calendar.</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a href="/api/export" className="inline-flex items-center rounded-[10px] bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-[#2c3659]">Download backup (JSON)</a>
+          <a href="/api/export" className="inline-flex items-center rounded-[10px] bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:brightness-110">Download backup (JSON)</a>
           <a href="/api/calendar" className="inline-flex items-center rounded-[10px] border border-line-strong px-4 py-2 text-sm font-medium hover:bg-tint">Download calendar (.ics)</a>
         </div>
         <p className="mt-2 text-xs text-neutral-500">The calendar file holds events and open task deadlines. In Google Calendar choose Settings, then Import &amp; export, then Import. It is a one-way copy; changes made in Google do not come back.</p>

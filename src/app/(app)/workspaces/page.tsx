@@ -40,7 +40,7 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
       <NewPanel label="New workspace">
       <form action={createWorkspace} className="flex gap-2">
         <input name="name" placeholder="New workspace name" aria-label="New workspace name" required className={`${input} flex-1`} />
-        <button className="rounded-md bg-neutral-900 px-4 py-2 text-white">Add</button>
+        <button className="rounded-md bg-accent px-4 py-2 text-on-accent">Add</button>
       </form>
       </NewPanel>
 

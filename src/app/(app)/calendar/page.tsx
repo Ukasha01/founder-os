@@ -95,7 +95,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         {(["day", "week", "month", "agenda"] as const).map((v) => (
-          <Link key={v} href={base(v, date)} className={`rounded-full border px-3 py-1 capitalize ${v === view ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300"}`}>{v}</Link>
+          <Link key={v} href={base(v, date)} className={`rounded-full border px-3 py-1 capitalize ${v === view ? "border-accent bg-accent text-on-accent" : "border-neutral-300"}`}>{v}</Link>
         ))}
         <span className="mx-2 font-medium">{title}</span>
         <Link href={base(view, prev)} className={btn} aria-label="Previous">‹</Link>
@@ -111,7 +111,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               const list = byDate.get(d) ?? [];
               const w = warning(d);
               return (
-                <Link key={d} href={base("day", d)} className={`min-h-20 rounded-md border p-2 text-xs ${d === today ? "border-neutral-900" : "border-neutral-200"} ${d.slice(0, 7) !== date.slice(0, 7) ? "opacity-50" : ""}`}>
+                <Link key={d} href={base("day", d)} className={`min-h-20 rounded-md border p-2 text-xs ${d === today ? "border-accent" : "border-neutral-200"} ${d.slice(0, 7) !== date.slice(0, 7) ? "opacity-50" : ""}`}>
                   <span className="font-medium">{fmtDay(d)}</span>
                   {w && <span className="block text-red-700">Overloaded</span>}
                   {list.slice(0, 3).map((i) => <span key={i.key} className="block truncate text-neutral-600">{i.title}</span>)}
@@ -125,7 +125,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             {days.filter((d) => view !== "agenda" || (byDate.get(d)?.length ?? 0) > 0).map((d) => {
               const w = warning(d);
               return (
-                <section key={d} className={`${card} ${d === today ? "border-neutral-900" : ""}`}>
+                <section key={d} className={`${card} ${d === today ? "border-accent" : ""}`}>
                   <h2 className="text-sm font-medium">{fmtDay(d)}</h2>
                   {w && <p role="status" className="text-xs text-red-700">{w}</p>}
                   {(byDate.get(d)?.length ?? 0) === 0 ? <p className="text-sm text-neutral-400">Nothing scheduled.</p> : <DayList d={d} />}
