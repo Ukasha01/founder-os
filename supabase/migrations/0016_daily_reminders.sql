@@ -15,3 +15,4 @@ create policy daily_reminders_select_own on public.daily_reminders for select us
 create policy daily_reminders_insert_own on public.daily_reminders for insert with check (owner_id = auth.uid());
 create policy daily_reminders_update_own on public.daily_reminders for update using (owner_id = auth.uid());
 create policy daily_reminders_delete_own on public.daily_reminders for delete using (owner_id = auth.uid());
+grant select, insert, update, delete on public.daily_reminders to authenticated;   -- the assistant and the app read and write it as the signed-in user
