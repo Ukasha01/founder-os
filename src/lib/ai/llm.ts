@@ -31,10 +31,12 @@ export function compatProviders(env: Record<string, string | undefined>): Compat
 // Fast providers first, Gemini as the fallback. Exception: Urdu turns go to Gemini first, because in your own logs the
 // Urdu from Gemini 2.5 Flash was fluent while gpt-oss-120b mistranslated names ("Wapsi" became "واپس") and mixed scripts.
 // An explicit LLM_PROVIDER always wins.
-export function providerOrder(env: Record<string, string | undefined>, urdu = false): string[] {
+export function providerOrder(env: Record<string, string | undefined>, urdu = false, smart = false): string[] {
   const all = [...compatProviders(env).map((p) => p.name), ...(env.GEMINI_API_KEY ? ["gemini"] : [])];
   const first = (env.LLM_PROVIDER ?? "").toLowerCase();
   if (all.includes(first)) return [first, ...all.filter((x) => x !== first)];
+  // Typed turns are not in a hurry, and Gemini follows tools and long context better than the fast open models.
+  if (smart && all.includes("gemini") && !(env.LLM_TYPED_PROVIDER === "fast")) return ["gemini", ...all.filter((x) => x !== "gemini")];
   if (urdu && all.includes("gemini") && !(env.LLM_URDU_PROVIDER === "fast")) return ["gemini", ...all.filter((x) => x !== "gemini")];
   return all;
 }
@@ -79,7 +81,7 @@ export function parseOpenAi(body: unknown): { text: string; calls: ToolCall[] } 
 async function askCompat(p: Compat, msgs: Msg[], context: string, o: LlmOpts): Promise<LlmResult> {
   try {
     // gpt-oss models "reason" before answering; those tokens count against the free limits, so keep it light.
-    const body = { model: p.model, temperature: 0.2, max_tokens: 700, messages: toOpenAiMessages(`${SYSTEM_PROMPT}\n\n${context}`, msgs), tools: toOpenAiTools(routeTools(o.userText)), tool_choice: "auto" };
+    const body = { model: p.model, temperature: 0.2, max_tokens: o.voice ? 500 : 1400, messages: toOpenAiMessages(`${SYSTEM_PROMPT}\n\n${context}`, msgs), tools: toOpenAiTools(routeTools(routingText(msgs, o.userText))), tool_choice: "auto" };
     const post = (extra: Record<string, unknown>) => fetch(`${p.base}/chat/completions`, {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${p.key}` }, body: JSON.stringify({ ...body, ...extra }), signal: AbortSignal.timeout(12000),
     });
@@ -95,9 +97,16 @@ async function askCompat(p: Compat, msgs: Msg[], context: string, o: LlmOpts): P
   }
 }
 
+// Tools are chosen from the words of the whole recent exchange, not only the last message: a bare "ok", "yes" or "next"
+// must still be offered the goal / habit / KPI tools the conversation is about (otherwise the model falls back to tasks).
+export function routingText(msgs: Msg[], now: string): string {
+  const recent = msgs.filter((m) => m.role === "user" || m.role === "assistant").slice(-6).map((m) => (m as { text?: string }).text ?? "");
+  return [now, ...recent].join(" \n ");
+}
+
 export async function askLlm(msgs: Msg[], context: string, o: LlmOpts): Promise<LlmResult> {
   const env = process.env;
-  const order = providerOrder(env, !!o.urdu);
+  const order = providerOrder(env, !!o.urdu, !o.voice);
   if (!order.length) return { ok: false, reason: "not_configured", message: "The assistant has no AI key yet. Add GEMINI_API_KEY (or GROQ_API_KEY) in Vercel to switch it on." };
   const compat = new Map(compatProviders(env).map((p) => [p.name, p]));
   let last: LlmResult | null = null;
@@ -105,7 +114,7 @@ export async function askLlm(msgs: Msg[], context: string, o: LlmOpts): Promise<
     // a provider that just failed (quota, outage) is skipped for a while instead of costing a timeout on every turn,
     // unless it is the only one left
     if (breaker.open(`llm:${name}`) && order.length > 1 && name !== order[order.length - 1]) continue;
-    const r = name === "gemini" ? await geminiChat(msgs, context) : await askCompat(compat.get(name)!, msgs, context, o);
+    const r = name === "gemini" ? await geminiChat(msgs, context, !o.voice) : await askCompat(compat.get(name)!, msgs, context, o);
     if (r.ok) { breaker.ok(`llm:${name}`); return r; }
     breaker.fail(`llm:${name}`, r.reason === "quota" ? { limit: 1, coolMs: 90_000 } : { limit: 2, coolMs: 30_000 });
     last = !last || r.reason === "quota" ? r : last;  // keep the most useful message: a quota notice beats a generic failure

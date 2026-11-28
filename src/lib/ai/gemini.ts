@@ -72,11 +72,11 @@ export function toGeminiContents(msgs: Msg[]): GeminiContent[] {
 
 // Gemini 2.5 "thinks" before answering, which adds seconds. For this assistant a thinking budget of 0 is faster and
 // still follows the tools well. Other model families use different settings, so only 2.5 gets it.
-export function generationConfig(model: string) {
-  return { temperature: 0.2, ...(/gemini-2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) };
+export function generationConfig(model: string, think = false) {
+  return { temperature: 0.2, ...(/gemini-2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: think ? 1024 : 0 } } : {}) };
 }
 
-export async function geminiChat(msgs: Msg[], context: string): Promise<LlmResult> {
+export async function geminiChat(msgs: Msg[], context: string, think = false): Promise<LlmResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "not_configured", message: "No Gemini key is set." };
   const model = process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
@@ -88,7 +88,7 @@ export async function geminiChat(msgs: Msg[], context: string): Promise<LlmResul
       contents: toGeminiContents(msgs),
       tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
       toolConfig: { functionCallingConfig: { mode: "AUTO" } },
-      generationConfig: withThinking ? generationConfig(model) : { temperature: 0.2 },
+      generationConfig: withThinking ? generationConfig(model, think) : { temperature: 0.2 },
     }),
     signal: AbortSignal.timeout(25000),
   });

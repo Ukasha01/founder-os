@@ -1,4 +1,4 @@
-import { looksMultiPart } from "./multipart.ts";
+import { claimsAction, looksMultiPart } from "./multipart.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { askLlm, type Msg, type ToolResult } from "./llm";
 import { isToolName, isRead, needsConfirmation, type ToolName, type Workspace } from "./tools";
@@ -123,7 +123,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const todayRange = rangeUtc(c.today, c.today, c.tz);
   const [{ data: tasks }, { data: past }, { data: st }, { data: inbox }, { data: events }, { data: meets }] = await Promise.all([
     supabase.from("task_overview").select("id, title, priority, current_deadline, workspace_id").in("status", ["not_started", "in_progress", "waiting"]).order("current_deadline", { nullsFirst: false }).limit(25),
-    supabase.from("ai_messages").select("role, content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]).order("created_at", { ascending: false }).limit(10),
+    supabase.from("ai_messages").select("role, content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]).order("created_at", { ascending: false }).limit(20),
     supabase.from("user_settings").select("ai_auto_approve").maybeSingle(),
     supabase.from("quick_capture").select("id, raw_text").eq("status", "inbox").order("captured_at", { ascending: false }).limit(12),
     supabase.from("calendar_events").select("title, start_at, end_at, all_day").is("deleted_at", null).neq("status", "cancelled").gte("start_at", todayRange.start.toISOString()).lt("start_at", todayRange.end.toISOString()).order("start_at").limit(15),
@@ -143,6 +143,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   let finalText = "", model = "", failure: string | null = null;
   const t0 = Date.now(); let llmMs = 0, rounds = 0;
   const MAX_ROUNDS = 6;
+  let nudged = false;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const tl = Date.now(); rounds++;
     const r = await askLlm(msgs, context, { voice, userText: message, urdu });
@@ -151,6 +152,12 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
     model = `${r.provider}:${r.model}`;
     const reads = r.calls.filter((x) => isToolName(x.name) && isRead(x.name));
     for (const x of r.calls) if (!(isToolName(x.name) && isRead(x.name))) proposals.push({ name: x.name, args: x.args });
+    // The model said it would do something but called no tool: that is a hallucinated action. Make it act, once.
+    if (!r.calls.length && !proposals.length && !nudged && claimsAction(r.text)) {
+      nudged = true;
+      msgs.push({ role: "assistant", text: r.text, calls: [], raw: r.raw, provider: r.provider }, { role: "user", text: "SYSTEM: You said you would do this but called no tool, so nothing happened. Call the needed tools now. If you truly cannot do it with your tools, say so plainly. Do not ask for permission; the app confirms writes." });
+      continue;
+    }
     // Nothing left to do: finished. After only writes, take one more look when the message has several parts, so the
     // second and third parts are not dropped: the model sees what was queued and either adds the rest or says it is done.
     if (!r.calls.length || (!reads.length && (!looksMultiPart(message) || round >= MAX_ROUNDS - 1))) { finalText = r.text; break; }
