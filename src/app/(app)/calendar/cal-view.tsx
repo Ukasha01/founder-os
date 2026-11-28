@@ -132,6 +132,9 @@ export function CalView({ view, date, today, from, to, nowMin, events, extras, g
     </div>
   );
 
+  const late = days.flatMap((d) => (byDay.get(d) ?? []).filter((x) => !x.seg.allDay && x.seg.startMin >= 20 * 60 && (d >= today)));
+  const lateCount = late.length;
+  const lateTitle = late.slice(0, 2).map((x) => `${mm(x.seg.startMin)} ${x.ev.title}`).join(", ") + (late.length > 2 ? "…" : "");
   const cols = days.length;
   const grid = (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
@@ -154,6 +157,11 @@ export function CalView({ view, date, today, from, to, nowMin, events, extras, g
             </div>
           ))}
         </div>
+      )}
+      {lateCount > 0 && (
+        <button type="button" onClick={() => scroller.current?.scrollTo({ top: 24 * H, behavior: "smooth" })} className="flex w-full items-center justify-center gap-2 border-b border-line bg-tint px-3 py-1.5 text-xs font-semibold transition hover:bg-accent hover:text-on-accent">
+          {lateCount} later event{lateCount > 1 ? "s" : ""} (after 20:00): {lateTitle} ↓
+        </button>
       )}
       <div ref={scroller} className="relative max-h-[640px] overflow-y-auto">
         <div className="relative grid" style={{ gridTemplateColumns: `3rem repeat(${cols}, minmax(0, 1fr))`, height: 24 * H }}>
