@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { input, card } from "@/lib/ui";
 import { DEFAULT_WEIGHTS, type Weights } from "@/lib/score";
-import { saveGeneral, saveWeights } from "./actions";
+import { saveGeneral, saveWeights, addNote, deleteNote } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import { PushToggle } from "./push-toggle";
 import { TelegramLink, EmailBackup, GoogleCalendarCard } from "./telegram-link";
@@ -11,6 +11,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const supabase = await createClient();
   const { data: s } = await supabase.from("user_settings").select("timezone, week_starts_on, scoring_weights").maybeSingle();
+  const { data: notes } = await supabase.from("assistant_notes").select("id, note").order("created_at", { ascending: false }).limit(50);
   const w = (s?.scoring_weights as Weights | undefined) ?? DEFAULT_WEIGHTS;
   const fields: [keyof Weights, string][] = [["tasks", "Tasks completed"], ["hours", "Planned hours worked"], ["kpis", "KPIs"], ["habits", "Habits"], ["planning", "Planning and review"]];
   return (
@@ -31,6 +32,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {fields.map(([k, label]) => <label key={k} className="flex flex-col gap-1 text-xs">{label}<input type="number" name={k} min={0} max={100} step="any" defaultValue={w[k]} className={input} /></label>)}
         <div><SubmitButton variant="primary">Save weights</SubmitButton></div>
       </form>
+      <section className={`${card} mt-4`}>
+        <h2 className="font-medium">What the assistant knows about you</h2>
+        <p className="mt-1 mb-3 text-sm text-neutral-600">Short facts it uses in every chat. It can propose new ones (you approve them). Delete anything that is wrong.</p>
+        <ul className="flex flex-col gap-1.5">
+          {(notes ?? []).map((n) => (
+            <li key={n.id} className="flex items-center justify-between gap-3 rounded-xl border border-line px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">{n.note}</span>
+              <form action={deleteNote}><input type="hidden" name="id" value={n.id} /><SubmitButton>Delete</SubmitButton></form>
+            </li>
+          ))}
+          {!notes?.length && <li className="text-sm text-neutral-500">Nothing yet. Tell the assistant something lasting, like when you sleep, or add a note here.</li>}
+        </ul>
+        <form action={addNote} className="mt-3 flex gap-2">
+          <input name="note" maxLength={300} placeholder="e.g. I usually sleep after 1 am" className={`${input} flex-1`} />
+          <SubmitButton variant="primary">Add</SubmitButton>
+        </form>
+      </section>
       <section className={`${card} mt-4`}>
         <h2 className="font-medium">Notifications</h2>
         <p className="mt-1 mb-3 text-sm text-neutral-600">A daily summary of what is due, meetings starting within the hour, and commitments to follow up. They always appear on the Today screen; this also sends them to your phone.</p>

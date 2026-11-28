@@ -159,3 +159,19 @@ export async function removeGoogleTestEvents(): Promise<{ ok: boolean; removed: 
   for (const l of rows ?? []) { const r = await gc.remove(l.google_event_id as string); if (r.ok) { await admin.from("google_calendar_links").delete().eq("id", l.id); removed++; } else return { ok: false, removed, error: r.message }; }
   return { ok: true, removed };
 }
+
+export async function addNote(formData: FormData) {
+  const p = z.object({ note: z.string().trim().min(1).max(300) }).safeParse(Object.fromEntries(formData));
+  if (!p.success) go("Write a short note (up to 300 characters).");
+  const supabase = await createClient();
+  const { error } = await supabase.from("assistant_notes").insert({ note: p.data!.note });
+  go(error?.message, "Note saved. The assistant will use it.");
+}
+
+export async function deleteNote(formData: FormData) {
+  const id = z.string().uuid().safeParse(formData.get("id"));
+  if (!id.success) go("Unknown note.");
+  const supabase = await createClient();
+  const { error } = await supabase.from("assistant_notes").delete().eq("id", id.data!);
+  go(error?.message, "Note deleted.");
+}

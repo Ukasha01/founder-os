@@ -130,6 +130,8 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
     supabase.from("meetings").select("title, starts_at").is("deleted_at", null).eq("status", "scheduled").gte("starts_at", todayRange.start.toISOString()).lt("starts_at", todayRange.end.toISOString()).order("starts_at").limit(10),
   ]);
   // A short progress snapshot, so he can be held to account without a tool call on every message.
+  let notes = "";
+  try { const { data: nn } = await supabase.from("assistant_notes").select("id, note").order("created_at", { ascending: false }).limit(25); notes = nn?.length ? `NOTES ABOUT HIM (id | note): ${nn.map((x) => `${x.id} | ${x.note}`).join(" || ")}\n` : "NOTES ABOUT HIM: none yet\n"; } catch { /* optional */ }
   let progress = "";
   try {
     const hb = await runRead(c, "list_habits", {}) as { habits?: { name: string; today: string; streak: number }[] };
@@ -141,7 +143,7 @@ export async function runTurn(supabase: SupabaseClient, rawText: string, voice: 
   const schedule = [...(events ?? []).map((e) => `${e.all_day ? "all day" : hm.format(new Date(e.start_at))} ${e.title}`), ...(meets ?? []).map((m) => `${hm.format(new Date(m.starts_at))} meeting: ${m.title}`)].join("; ");
   const context = `${languageDirective(lang)}\nTODAY: ${c.today}, NOW: ${timeInTz(new Date(), c.tz)} (${c.tz}); tomorrow is ${addDays(c.today, 1)}\nINPUT MODE: ${voice ? "voice (spoken; your reply will be read aloud, so keep it short and conversational)" : "typed"}\nWORKSPACES: ${c.workspaces.map((w) => w.name).join(", ")}\nTODAY'S SCHEDULE: ${schedule || "nothing scheduled"}\n` +
     `INBOX (${inbox?.length ?? 0} unsorted; id | text): ${(inbox ?? []).map((x) => `${x.id} | ${x.raw_text}`).join(" || ") || "empty"}\n` +
-    `${progress}SOME OPEN TASKS (id | title | workspace | priority | deadline; use list_tasks for more):\n` +
+    `${progress}${notes}SOME OPEN TASKS (id | title | workspace | priority | deadline; use list_tasks for more):\n` +
     ((tasks ?? []).map((t) => `${t.id} | ${t.title} | ${wsName.get(t.workspace_id)} | ${t.priority} | ${t.current_deadline ?? "none"}`).join("\n") || "(none)");
   const msgs: Msg[] = (past ?? []).reverse().filter((m) => m.content).map((m): Msg => m.role === "user" ? { role: "user", text: m.content as string } : { role: "assistant", text: m.content as string, calls: [] });
 

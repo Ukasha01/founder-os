@@ -138,6 +138,9 @@ export const TOOLS = {
   save_daily_review: { kind: "write", desc: "Write the daily review (wins, blockers, plan for tomorrow) and optionally mark it complete, which locks in the day's score.", schema: z.object({ date: date.optional(), wins: opt(5000), blockers: opt(5000), tomorrow_plan: opt(5000), complete: z.boolean().optional() })
     .refine((v) => v.wins || v.blockers || v.tomorrow_plan || v.complete, "Nothing to save."),
     params: { date: s(D + ", default today"), wins: s("What went well"), blockers: s("What got in the way"), tomorrow_plan: s("Plan for tomorrow"), complete: b("Mark the review complete") } },
+  remember_note: { kind: "write", desc: "Save one short lasting fact, preference or pattern about him that will help in future chats (e.g. 'sleeps after 1 am', 'prefers short replies'). Not for one-off tasks.", schema: z.object({ note: txt(300) }),
+    params: { note: s("The fact, one short sentence") }, required: ["note"] },
+  forget_note: { kind: "write", desc: "Delete one saved note. The id is in the context's NOTES list.", schema: z.object({ note_id: uuid }), params: { note_id: s("Note id from the NOTES list") }, required: ["note_id"] },
   add_to_inbox: { kind: "write", desc: "Save an unsorted note, idea, promise or reminder to the Inbox when it is unclear what it should become.", schema: z.object({ text: txt(2000), kind: z.enum(["general", "idea", "promise", "reminder"]).optional() }),
     params: { text: s("The note"), kind: e(["general", "idea", "promise", "reminder"]) }, required: ["text"] },
 } satisfies Record<string, Spec>;
@@ -157,7 +160,7 @@ export const FUNCTION_DECLARATIONS = (Object.entries(TOOLS) as [ToolName, Spec][
 
 // Token-limited providers get only the tools that fit the request: every read tool, a few common write tools, and the
 // write tools whose topic the message mentions (English, Roman Urdu or Urdu script). Providers with large limits get all.
-const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete", "delete_item", "update_commitment", "set_reminder", "set_daily_reminder", "cancel_reminder", "reschedule_reminder"];
+const CORE_WRITE = ["create_task", "update_task", "complete_task", "reschedule_task", "add_to_inbox", "delete_task", "bulk_tasks", "undo_last_delete", "delete_item", "update_commitment", "set_reminder", "set_daily_reminder", "cancel_reminder", "reschedule_reminder", "remember_note", "forget_note"];
 const GROUPS: [RegExp, string[]][] = [
   [/\b(log|logged|worked|work|minutes?|mins?|hours?|ghant[ae]|time)\b|گھنٹ|منٹ|کام کیا|وقت/i, ["log_time"]],
   [/goal|milestone|target|objective|مقصد|ہدف|گول/i, ["create_goal", "add_milestone", "update_milestone", "set_goal_status"]],
@@ -230,7 +233,7 @@ When he says "step by step", "ask me questions" or "set things up": ask ONE shor
 
 COACHING AND ACCOUNTABILITY
 He wants accountability, not longer lists. The context has a PROGRESS line (overdue tasks, habit streaks); use it. When he plans something, tie it to a reminder, KPI or habit and say in one line what you will hold him to. If he is adding new goals while existing ones are stalled or overdue, say so kindly and ask which one to finish first. When he reports progress, log it with the right tool. When asked how he is doing, call get_performance and be honest and specific: what went well, what did not, one suggestion.
-He may ask general questions (Karachi diet, study, Islamic basics): answer briefly and practically, then offer one concrete action to put in the app. You only know what is in the context, the earlier messages and the tools; you do not remember anything else between chats.
+He may ask general questions (Karachi diet, study, Islamic basics): answer briefly and practically, then offer one concrete action to put in the app. You only know what is in the context (including NOTES), the earlier messages and the tools. When he tells you a lasting fact, preference or pattern about himself (wake/sleep time, what distracts him, how he likes to be coached), call remember_note with one short sentence; never save one-off tasks, passwords, or health, money or other private details. If he says a note is wrong or to forget it, call forget_note.
 
 LANGUAGE AND STYLE
 Reply in the language he used: English, Roman Urdu or Urdu. If he wrote or spoke Urdu or Roman Urdu, reply in natural, simple, spoken Pakistani Urdu written in Urdu script (not Hindi words, not bookish Urdu). Keep task names, app words and technical terms in English letters. Write numbers as digits. Spoken input may contain recognition mistakes: infer the likely meaning and confirm only if it matters.

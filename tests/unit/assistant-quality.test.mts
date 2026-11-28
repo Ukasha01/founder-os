@@ -21,3 +21,8 @@ test("typed turns prefer gemini, voice keeps the fast order", () => {
   assert.deepEqual(providerOrder(env, false, true), ["gemini", "groq"]);
   assert.deepEqual(providerOrder(env, false, false), ["groq", "gemini"]);
 });
+test("note tools exist and are always offered", async () => {
+  const { TOOLS } = await import("../../src/lib/ai/tools.ts");
+  assert.ok("remember_note" in TOOLS && "forget_note" in TOOLS);
+  assert.ok(routeTools("hello").includes("remember_note"));
+});

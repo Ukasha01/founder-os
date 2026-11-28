@@ -262,7 +262,7 @@ async function labelOf(c: Ctx, k: ItemKind, id: string, soft: boolean): Promise<
   return data ? short(String((data as unknown as Json)[k.col])) : null;
 }
 
-const NEW_TOOLS = ["set_daily_reminder", "cancel_reminder", "reschedule_reminder", "update_commitment", "delete_item", "archive_item", "pause_recurring", "start_timer", "stop_timer", "manage_workspace", "meeting_attendee"];
+const NEW_TOOLS = ["remember_note", "forget_note", "set_daily_reminder", "cancel_reminder", "reschedule_reminder", "update_commitment", "delete_item", "archive_item", "pause_recurring", "start_timer", "stop_timer", "manage_workspace", "meeting_attendee"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // A reminder id may belong to a one-off reminder or to a repeating rule; find which.
 async function findReminder(c: Ctx, id: string): Promise<{ kind: "daily"; title: string; time: string } | { kind: "once"; title: string; status: string } | null> {
@@ -274,6 +274,11 @@ async function findReminder(c: Ctx, id: string): Promise<{ kind: "daily"; title:
 async function validateMore(c: Ctx, name: string, d: Json): Promise<Validated> {
   const q = (t: string) => `“${t}”`;
   switch (name) {
+    case "remember_note": return { ok: true, input: d, preview: `Remember: ${q(String(d.note))}` };
+    case "forget_note": {
+      const { data } = await c.supabase.from("assistant_notes").select("note").eq("id", d.note_id as string).maybeSingle();
+      return data ? { ok: true, input: d, preview: `Forget: ${q(String(data.note))}` } : { ok: false, error: "That note does not exist." };
+    }
     case "set_daily_reminder": {
       const days = Array.isArray(d.weekdays) && d.weekdays.length && d.weekdays.length < 7 ? ` on ${[...new Set(d.weekdays as number[])].sort().map((x) => DAY_NAMES[x]).join(", ")}` : " every day";
       return { ok: true, input: d, preview: `Remind you${days} at ${d.time}: ${q(String(d.title))}` };
@@ -658,6 +663,16 @@ export async function executeWrite(c: Ctx, name: ToolName, i: Json, logId: strin
       if (error) { if (error.code === "23505") return { type: "reminders", ids: [], verified: true }; return fail(error.message); }
       const { data: back } = await db.from("reminders").select("id").eq("id", data.id).maybeSingle();
       return { type: "reminders", ids: [data.id], verified: !!back };
+    }
+    case "remember_note": {
+      const { data, error } = await db.from("assistant_notes").insert({ note: i.note }).select("id").single();
+      if (error) return fail(error.message);
+      return { type: "assistant_notes", ids: [data.id], verified: true };
+    }
+    case "forget_note": {
+      const { error } = await db.from("assistant_notes").delete().eq("id", i.note_id as string); if (error) return fail(error.message);
+      const { data } = await db.from("assistant_notes").select("id").eq("id", i.note_id as string).maybeSingle();
+      return { type: "assistant_notes", ids: [i.note_id as string], verified: !data };
     }
     case "set_daily_reminder": {
       const { data, error } = await db.from("daily_reminders").insert({ title: i.title, at_time: i.time, weekdays: Array.isArray(i.weekdays) && (i.weekdays as number[]).length && (i.weekdays as number[]).length < 7 ? [...new Set(i.weekdays as number[])].sort() : null }).select("id").single();
